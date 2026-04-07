@@ -2,7 +2,7 @@
 --!nolint
 
 _P = {
-    genDate = "2026-04-07T14:30:00.000000000+00:00",
+    genDate = "2026-04-07T14:45:00.000000000+00:00",
     cfg = "PrisonLifeSpecific",
     vers = "2.5",
 }
@@ -18,7 +18,7 @@ local a = {
 }
 
 do
-    -- Event System (exact same as your DiddyWare)
+    -- Event System (exact same as your first DiddyWare)
     function a.a()
         local b, c, d = {}, {}, { "onPaint", "onUpdate", "onSlowUpdate", "shutdown" }
         for e, f in ipairs(d) do c[f] = {} end
@@ -35,19 +35,19 @@ do
             for e, f in pairs(c) do c[e] = {} end
         end
 
-        local e = function(e, ...)
+        local call = function(e, ...)
             for f, g in pairs(c[e]) do g(...) end
         end
 
         function b:Initialise()
             for f, g in ipairs(d) do
-                cheat.Register(g, function(...) e(g, ...) end)
+                cheat.Register(g, function(...) call(g, ...) end)
             end
         end
         return b
     end
 
-    function a.b() -- Registry (same)
+    function a.b()
         local b = {} b.__index = b local c = {}
         function b:Register(d, e) e = e or {} c[d] = e return e end
         function b:Get(d) return c[d] end
@@ -55,7 +55,7 @@ do
         return b
     end
 
-    function a.c() -- Config (same)
+    function a.c()
         local b, c = a.load("b"), {}
         local d, e = b:Register("Configuration.Elements", {}), b:Register("Configuration.Values", {})
         function c.Register(f, g) d[f] = g end
@@ -64,7 +64,7 @@ do
         return c
     end
 
-    function a.d() -- Environment
+    function a.d()
         local b = a.load("b")
         return {
             cached_guns = {},
@@ -75,7 +75,7 @@ do
         }
     end
 
-    -- Core Environment
+    -- Environment + Caching
     function a.e()
         local ws, events, cfg, env = game:GetService("Workspace"), a.load("a"), a.load("c"), a.load("d")
 
@@ -109,7 +109,7 @@ do
         end)
     end
 
-    -- Auto Grab Guns
+    -- Auto Grab Guns (Prison Life specific)
     function a.o()
         local cfg = a.load("c")
         local last = 0
@@ -150,7 +150,7 @@ do
         end)
     end
 
-    -- Player ESP (simple & clean)
+    -- Player ESP
     function a.p()
         local cfg, env = a.load("c"), a.load("d")
         local events = a.load("a")
@@ -186,7 +186,7 @@ do
         end)
     end
 
-    -- UI Builder (exact same style as your original DiddyWare)
+    -- UI Builder (exact same as your original DiddyWare)
     function a.u()
         local b, c, d, e = a.load("a"), a.load("c"), a.load("b"), {}
         e.DebugMode = false
@@ -212,16 +212,8 @@ do
             ui.newCheckbox(self.TabRef, self.Ref, k, l)
             return i(self.TabRef, self.Ref, k, m)
         end
-        function j:SliderInt(k, l, m, n, o)
-            ui.newSliderInt(self.TabRef, self.Ref, k, l, m, n)
-            return i(self.TabRef, self.Ref, k, o)
-        end
         function j:Dropdown(k, l, m, n)
             ui.newDropdown(self.TabRef, self.Ref, k, l, m)
-            return i(self.TabRef, self.Ref, k, n)
-        end
-        function j:Colorpicker(k, l, m, n)
-            ui.newColorpicker(self.TabRef, self.Ref, k, l, m)
             return i(self.TabRef, self.Ref, k, n)
         end
 
@@ -238,13 +230,15 @@ do
 
         function e:Initialise()
             b.Add("onUpdate", function()
-                for l, m in next, f do m:_Poll and m:_Poll() or nil end
+                for l, m in next, f do
+                    if m._Poll then m:_Poll() end
+                end
             end)
         end
         return e
     end
 
-    -- Features Tab (only Prison Life specific)
+    -- Features Tab
     function a.v()
         local b = {}
         function b:Initialise(e)
@@ -290,22 +284,22 @@ do
     end
 end
 
--- Main Loader
+-- Main
 local events = a.load("a")
 
 local function main()
     a.load("e")()
-    a.o()           -- Auto Grab Guns
-    a.k()           -- Remove Doors
-    a.p()           -- Player ESP
-    a.q()           -- Gun ESP
+    a.o()  -- Auto Grab Guns
+    a.k()  -- Remove Doors
+    a.p()  -- Player ESP
+    a.q()  -- Gun ESP
     a.load("y"):Initialise()
 
     events.Add("shutdown", function()
         events.ClearAll()
     end)
 
-    print("✅ PrisonLifeWare Specific v2.5 loaded!")
+    print("✅ PrisonLifeWare Specific v2.5 loaded successfully!")
 end
 
 main()
