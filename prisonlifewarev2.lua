@@ -1,26 +1,25 @@
 --!nocheck
 --!nolint
 
--- PrisonLifeWare - Minimal (Only Auto Grab Guns + Remove Doors)
--- For Serotonin external menu
+-- PrisonLifeWare Minimal - Only Auto Grab Guns + Remove Doors
+-- For Serotonin (external menu)
 
-print("✅ PrisonLifeWare Minimal loaded!")
+print("✅ PrisonLifeWare Minimal v2.9 loaded!")
 
--- ==================== UI (exact same style as your other scripts) ====================
-ui.newTab("PrisonLifeWare", "PrisonLifeWare")
+-- ==================== UI SETUP (exact format from your working scripts) ====================
+ui.newTab("plw", "PrisonLifeWare")
 
-ui.newContainer("PrisonLifeWare", "Features", "Features", {next = true})
-ui.newCheckbox("PrisonLifeWare", "Features", "Auto Grab Guns", true)
-ui.newCheckbox("PrisonLifeWare", "Features", "Remove Doors", false)
+ui.newContainer("plw", "features", "Features", {next = true})
+ui.newCheckbox("plw", "features", "Auto Grab Guns", true)
+ui.newCheckbox("plw", "features", "Remove Doors", false)
 
 -- ==================== AUTO GRAB GUNS ====================
 cheat.Register("onUpdate", function()
-    if not ui.getValue("PrisonLifeWare", "Features", "Auto Grab Guns") then return end
+    if not ui.getValue("plw", "features", "Auto Grab Guns") then return end
 
     local ws = game.Workspace
     local prisonItems = ws:FindFirstChild("Prison_ITEMS")
     if not prisonItems then return end
-
     local giver = prisonItems:FindFirstChild("giver")
     if not giver then return end
 
@@ -36,7 +35,7 @@ end)
 
 -- ==================== REMOVE DOORS ====================
 cheat.Register("onUpdate", function()
-    if not ui.getValue("PrisonLifeWare", "Features", "Remove Doors") then return end
+    if not ui.getValue("plw", "features", "Remove Doors") then return end
 
     local ws = game.Workspace
     for _, obj in pairs(ws:GetDescendants()) do
@@ -47,4 +46,4 @@ cheat.Register("onUpdate", function()
     end
 end)
 
-print("Features registered. Toggle Auto Grab Guns and Remove Doors in the side menu.")
+print("Toggles registered. Turn on Auto Grab Guns and Remove Doors in the side menu.")
