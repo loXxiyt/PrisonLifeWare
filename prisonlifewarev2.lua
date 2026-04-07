@@ -1,13 +1,14 @@
 --!nocheck
 --!nolint
 
--- PrisonLifeWare v3.1 - Minimal for Serotonin
-print("✅ PrisonLifeWare v3.1 loaded!")
+-- PrisonLifeWare v3.2 - Minimal for Serotonin
+-- Only Auto Grab Guns + Remove Doors (no ESP)
 
--- ==================== UI SETUP (matching your screenshot style) ====================
+print("✅ PrisonLifeWare v3.2 loaded!")
+
+-- ==================== UI (exact pattern from your working scripts) ====================
 ui.newTab("plw", "PrisonLifeWare")
 
--- Features Container
 ui.newContainer("plw", "feat", "Features", {next = true})
 ui.newCheckbox("plw", "feat", "Auto Grab Guns", true)
 ui.newCheckbox("plw", "feat", "Remove Doors", false)
@@ -19,6 +20,7 @@ cheat.Register("onUpdate", function()
     local ws = game.Workspace
     local prisonItems = ws:FindFirstChild("Prison_ITEMS")
     if not prisonItems then return end
+
     local giver = prisonItems:FindFirstChild("giver")
     if not giver then return end
 
@@ -45,4 +47,4 @@ cheat.Register("onUpdate", function()
     end
 end)
 
-print("Toggles registered. Try turning on Auto Grab Guns and Remove Doors.")
+print("Toggles registered. Turn on 'Auto Grab Guns' and 'Remove Doors'.")
