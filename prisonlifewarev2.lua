@@ -2,9 +2,9 @@
 --!nolint
 
 _P = {
-    genDate = "2026-04-07T13:00:00.000000000+00:00",
+    genDate = "2026-04-07T14:30:00.000000000+00:00",
     cfg = "PrisonLifeSpecific",
-    vers = "2.3",
+    vers = "2.5",
 }
 
 local a = {
@@ -18,80 +18,75 @@ local a = {
 }
 
 do
-    -- Event System
+    -- Event System (exact same as your DiddyWare)
     function a.a()
-        local handlers = { onPaint = {}, onUpdate = {}, onSlowUpdate = {}, shutdown = {} }
-        local self = {}
+        local b, c, d = {}, {}, { "onPaint", "onUpdate", "onSlowUpdate", "shutdown" }
+        for e, f in ipairs(d) do c[f] = {} end
 
-        function self.Add(name, func)
-            if not handlers[name] then return nil end
-            table.insert(handlers[name], func)
-            return #handlers[name]
+        function b.Add(e, f)
+            if type(e) ~= "string" or type(f) ~= "function" then return nil end
+            if not c[e] then return nil end
+            local g = #c[e] + 1
+            c[e][g] = f
+            return g
         end
 
-        function self.ClearAll()
-            for k in pairs(handlers) do handlers[k] = {} end
+        function b.ClearAll()
+            for e, f in pairs(c) do c[e] = {} end
         end
 
-        function self:Initialise()
-            for name in pairs(handlers) do
-                cheat.Register(name, function(...)
-                    for _, f in pairs(handlers[name]) do pcall(f, ...) end
-                end)
+        local e = function(e, ...)
+            for f, g in pairs(c[e]) do g(...) end
+        end
+
+        function b:Initialise()
+            for f, g in ipairs(d) do
+                cheat.Register(g, function(...) e(g, ...) end)
             end
         end
-        return self
+        return b
     end
 
-    function a.b() -- Registry
-        local store = {}
-        local self = {}
-        self.__index = self
-        function self:Register(name, tbl)
-            tbl = tbl or {}
-            store[name] = tbl
-            return tbl
-        end
-        function self:Get(name) return store[name] end
-        return self
+    function a.b() -- Registry (same)
+        local b = {} b.__index = b local c = {}
+        function b:Register(d, e) e = e or {} c[d] = e return e end
+        function b:Get(d) return c[d] end
+        function b:UnloadAll() c = {} end
+        return b
     end
 
-    function a.c() -- Config
-        local reg = a.load("b")
-        local values = reg:Register("Config.Values", {})
-        local self = {}
-        function self.GetValue(k) return values[k] end
-        function self.SetValue(k, v) values[k] = v end
-        return self
+    function a.c() -- Config (same)
+        local b, c = a.load("b"), {}
+        local d, e = b:Register("Configuration.Elements", {}), b:Register("Configuration.Values", {})
+        function c.Register(f, g) d[f] = g end
+        function c.GetValue(f) return e[f] end
+        function c.SetValue(f, g) e[f] = g end
+        return c
     end
 
     function a.d() -- Environment
-        local reg = a.load("b")
+        local b = a.load("b")
         return {
             cached_guns = {},
             cached_doors = {},
-            local_character = nil,
-            local_position = Vector3.new(),
-            colour_cache = reg:Register("colour_cache", {}),
+            local_position = Vector3.new(0,0,0),
+            colour_cache = b:Register("env_colour_cache", {}),
+            text_size_cache = b:Register("env_text_size_cache", {}),
         }
     end
 
-    -- Environment + Caching
+    -- Core Environment
     function a.e()
-        local ws = game:GetService("Workspace")
-        local events = a.load("a")
-        local env = a.load("d")
+        local ws, events, cfg, env = game:GetService("Workspace"), a.load("a"), a.load("c"), a.load("d")
 
         events.Add("onUpdate", function()
             local lp = entity.get_local_player()
             if lp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-                env.local_character = lp.Character
                 env.local_position = lp.Character.HumanoidRootPart.Position
             end
         end)
 
         events.Add("onSlowUpdate", function()
-            -- Guns from giver
             local guns = {}
             local giver = ws:FindFirstChild("Prison_ITEMS") and ws.Prison_ITEMS:FindFirstChild("giver")
             if giver then
@@ -104,7 +99,6 @@ do
             end
             env.cached_guns = guns
 
-            -- Doors, Gates, Fences
             local doors = {}
             for _, obj in pairs(ws:GetDescendants()) do
                 if obj:IsA("BasePart") and (obj.Name:lower():find("door") or obj.Name:lower():find("gate") or obj.Name:lower():find("fence")) then
@@ -115,11 +109,11 @@ do
         end)
     end
 
-    -- Auto Grab Guns (Prison Life specific)
-    function a.autograb()
+    -- Auto Grab Guns
+    function a.o()
         local cfg = a.load("c")
-        local events = a.load("a")
         local last = 0
+        local events = a.load("a")
         events.Add("onUpdate", function()
             if not cfg.GetValue("Auto Grab Guns") then return end
             if tick() - last < 1.5 then return end
@@ -140,8 +134,8 @@ do
         end)
     end
 
-    -- Remove Doors / Gates / Fences
-    function a.removedoors()
+    -- Remove Doors
+    function a.k()
         local cfg = a.load("c")
         local env = a.load("d")
         local events = a.load("a")
@@ -156,10 +150,9 @@ do
         end)
     end
 
-    -- Player ESP
-    function a.playeresp()
-        local cfg = a.load("c")
-        local env = a.load("d")
+    -- Player ESP (simple & clean)
+    function a.p()
+        local cfg, env = a.load("c"), a.load("d")
         local events = a.load("a")
         events.Add("onPaint", function()
             if not cfg.GetValue("Visuals Enabled") or not cfg.GetValue("Player ESP") then return end
@@ -170,7 +163,7 @@ do
                     if onScreen then
                         local dist = (env.local_position - pos).Magnitude
                         local color = plr.Team and plr.Team.Color or Color3.new(1,1,1)
-                        draw.text_outlined(plr.Name .. " [" .. math.floor(dist) .. "m]", screen - Vector2.new(0, 20), color, "ConsolasBold", 1)
+                        draw.text_outlined(plr.Name .. " ["..math.floor(dist).."m]", screen - Vector2.new(0,20), color, cfg.GetValue("ESP Font Selection") or "ConsolasBold", 1)
                     end
                 end
             end
@@ -178,9 +171,8 @@ do
     end
 
     -- Gun ESP
-    function a.gunesp()
-        local cfg = a.load("c")
-        local env = a.load("d")
+    function a.q()
+        local cfg, env = a.load("c"), a.load("d")
         local events = a.load("a")
         events.Add("onPaint", function()
             if not cfg.GetValue("Visuals Enabled") or not cfg.GetValue("Gun ESP") then return end
@@ -188,104 +180,132 @@ do
                 local screen, onScreen = utility.world_to_screen(gun.position)
                 if onScreen then
                     local dist = (env.local_position - gun.position).Magnitude
-                    draw.text_outlined(gun.name .. " [" .. math.floor(dist) .. "m]", screen, Color3.fromRGB(0, 255, 100), "ConsolasBold", 1)
+                    draw.text_outlined(gun.name .. " ["..math.floor(dist).."m]", screen, Color3.fromRGB(0,255,100), cfg.GetValue("ESP Font Selection") or "ConsolasBold", 1)
                 end
             end
         end)
     end
 
-    -- Full UI Builder (fixed & working style from your original DiddyWare)
+    -- UI Builder (exact same style as your original DiddyWare)
     function a.u()
-        local events = a.load("a")
-        local cfg = a.load("c")
-        local ui = {}
+        local b, c, d, e = a.load("a"), a.load("c"), a.load("b"), {}
+        e.DebugMode = false
+        local f, g, h = d:Register("UI.Elements", {}), d:Register("UI.DebugElements", {}), {}
+        h.__index = h
+        function h:Get() return c.GetValue(self.Name) end
+        function h:Set(i)
+            ui.setValue(self.TabRef, self.ContainerRef, self.Name, i)
+            c.SetValue(self.Name, i)
+        end
+        function h:Visible(i) ui.setVisibility(self.TabRef, self.ContainerRef, self.Name, i) end
 
-        local element = {}
-        element.__index = element
-        function element:Get() return cfg.GetValue(self.Name) end
-        function element:Set(v)
-            ui.setValue(self.TabRef, self.ContainerRef, self.Name, v)
-            cfg.SetValue(self.Name, v)
+        local i, j = function(i, j, k, l)
+            local m = setmetatable({ TabRef = i, ContainerRef = j, Name = k, Debug = l and l.Debug }, h)
+            c.Register(k, m)
+            f[k] = m
+            if m.Debug then m:Visible(false) g[#g+1] = m end
+            return m
+        end, {}
+
+        j.__index = j
+        function j:Checkbox(k, l, m)
+            ui.newCheckbox(self.TabRef, self.Ref, k, l)
+            return i(self.TabRef, self.Ref, k, m)
         end
-        function element:Visible(v)
-            ui.setVisibility(self.TabRef, self.ContainerRef, self.Name, v)
+        function j:SliderInt(k, l, m, n, o)
+            ui.newSliderInt(self.TabRef, self.Ref, k, l, m, n)
+            return i(self.TabRef, self.Ref, k, o)
+        end
+        function j:Dropdown(k, l, m, n)
+            ui.newDropdown(self.TabRef, self.Ref, k, l, m)
+            return i(self.TabRef, self.Ref, k, n)
+        end
+        function j:Colorpicker(k, l, m, n)
+            ui.newColorpicker(self.TabRef, self.Ref, k, l, m)
+            return i(self.TabRef, self.Ref, k, n)
         end
 
-        local container = {}
-        container.__index = container
-        function container:Checkbox(name, default)
-            ui.newCheckbox(self.TabRef, self.Ref, name, default or false)
-            local el = setmetatable({TabRef = self.TabRef, ContainerRef = self.Ref, Name = name}, element)
-            cfg.SetValue(name, default or false)
-            return el
-        end
-        function container:SliderInt(name, min, max, default)
-            ui.newSliderInt(self.TabRef, self.Ref, name, min, max, default)
-            local el = setmetatable({TabRef = self.TabRef, ContainerRef = self.Ref, Name = name}, element)
-            cfg.SetValue(name, default)
-            return el
+        local k = {} k.__index = k
+        function k:Container(l, m, n)
+            ui.newContainer(self.Ref, l, m, n or {})
+            return setmetatable({ TabRef = self.Ref, Ref = l }, j)
         end
 
-        function ui.NewTab(tabName, displayName)
-            ui.newTab(tabName, displayName)
-            return setmetatable({TabRef = tabName, Ref = "Main"}, container)
+        function e.NewTab(l, m)
+            ui.newTab(l, m)
+            return setmetatable({ Ref = l }, k)
         end
 
-        function ui:Initialise()
-            events.Add("onUpdate", function() end) -- placeholder for polling if needed
+        function e:Initialise()
+            b.Add("onUpdate", function()
+                for l, m in next, f do m:_Poll and m:_Poll() or nil end
+            end)
         end
-        return ui
+        return e
     end
 
-    -- Tabs
-    function a.features()
-        local ui = a.load("u")
-        local function init(tab)
-            local f = tab:Container("Features", "Features", {autosize = true})
+    -- Features Tab (only Prison Life specific)
+    function a.v()
+        local b = {}
+        function b:Initialise(e)
+            local f = e:Container("Features_PrisonLifeWare", "Features", {autosize = true, next = true})
             f:Checkbox("Auto Grab Guns", true)
             f:Checkbox("Remove Doors", false)
         end
-        return {Initialise = init}
+        return b
     end
 
-    function a.visuals()
-        local ui = a.load("u")
-        local function init(tab)
-            local v = tab:Container("Visuals", "Visuals", {autosize = true})
-            v:Checkbox("Visuals Enabled", true)
-            v:Checkbox("Player ESP", true)
-            v:Checkbox("Gun ESP", true)
+    -- Visuals Tab
+    function a.w()
+        local b = {}
+        function b:Initialise(e)
+            local f = e:Container("VisualsTab_PrisonLifeWare", "Visuals", {autosize = true, next = true})
+            f:Checkbox("Visuals Enabled", true)
+            f:Checkbox("Player ESP", true)
+            f:Checkbox("Gun ESP", true)
+            f:Dropdown("ESP Font Selection", {"ConsolasBold", "SmallestPixel", "Verdana", "Tahoma"}, 1)
         end
-        return {Initialise = init}
+        return b
+    end
+
+    -- Settings Tab
+    function a.x()
+        local b = {}
+        function b:Initialise(e)
+            local f = e:Container("Settings_PrisonLifeWare", "Settings", {autosize = true})
+            f:SliderFloat("Update Map Every (s)", 0.5, 5, 1)
+        end
+        return b
     end
 
     function a.y()
-        local ui = a.load("u")
-        local function init()
-            local tab = ui.NewTab("PrisonLifeWare", "PrisonLifeWare")
-            a.features().Initialise(tab)
-            a.visuals().Initialise(tab)
+        local b, c, d, e, f = {}, a.load("u"), a.load("v"), a.load("w"), a.load("x")
+        function b:Initialise()
+            local g = c.NewTab("PrisonLifeWare", "PrisonLifeWare")
+            d:Initialise(g)
+            e:Initialise(g)
+            f:Initialise(g)
         end
-        return {Initialise = init}
+        return b
     end
 end
 
--- Main
+-- Main Loader
 local events = a.load("a")
 
 local function main()
     a.load("e")()
-    a.autograb()
-    a.removedoors()
-    a.playeresp()
-    a.gunesp()
+    a.o()           -- Auto Grab Guns
+    a.k()           -- Remove Doors
+    a.p()           -- Player ESP
+    a.q()           -- Gun ESP
     a.load("y"):Initialise()
 
     events.Add("shutdown", function()
         events.ClearAll()
     end)
 
-    print("✅ PrisonLifeWare v2.3 (Specific Features) loaded!")
+    print("✅ PrisonLifeWare Specific v2.5 loaded!")
 end
 
 main()
