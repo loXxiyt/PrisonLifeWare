@@ -1,25 +1,26 @@
 --!nocheck
 --!nolint
 
--- PrisonLifeWare Minimal - Only Auto Grab Guns + Remove Doors
--- For Serotonin (external menu)
+-- PrisonLifeWare Minimal v3.0 - Only Auto Grab Guns + Remove Doors
+-- Fixed for Serotonin
 
-print("✅ PrisonLifeWare Minimal v2.9 loaded!")
+print("✅ PrisonLifeWare v3.0 loaded!")
 
--- ==================== UI SETUP (exact format from your working scripts) ====================
+-- ==================== UI (exact same format as your other scripts) ====================
 ui.newTab("plw", "PrisonLifeWare")
 
-ui.newContainer("plw", "features", "Features", {next = true})
-ui.newCheckbox("plw", "features", "Auto Grab Guns", true)
-ui.newCheckbox("plw", "features", "Remove Doors", false)
+ui.newContainer("plw", "feat", "Features", {next = true})
+ui.newCheckbox("plw", "feat", "Auto Grab Guns", true)
+ui.newCheckbox("plw", "feat", "Remove Doors", false)
 
 -- ==================== AUTO GRAB GUNS ====================
 cheat.Register("onUpdate", function()
-    if not ui.getValue("plw", "features", "Auto Grab Guns") then return end
+    if not ui.getValue("plw", "feat", "Auto Grab Guns") then return end
 
     local ws = game.Workspace
     local prisonItems = ws:FindFirstChild("Prison_ITEMS")
     if not prisonItems then return end
+
     local giver = prisonItems:FindFirstChild("giver")
     if not giver then return end
 
@@ -35,7 +36,7 @@ end)
 
 -- ==================== REMOVE DOORS ====================
 cheat.Register("onUpdate", function()
-    if not ui.getValue("plw", "features", "Remove Doors") then return end
+    if not ui.getValue("plw", "feat", "Remove Doors") then return end
 
     local ws = game.Workspace
     for _, obj in pairs(ws:GetDescendants()) do
@@ -46,4 +47,4 @@ cheat.Register("onUpdate", function()
     end
 end)
 
-print("Toggles registered. Turn on Auto Grab Guns and Remove Doors in the side menu.")
+print("Toggles ready. Turn on 'Auto Grab Guns' and 'Remove Doors' in the side menu.")
