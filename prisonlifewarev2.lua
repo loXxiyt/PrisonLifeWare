@@ -1,8 +1,13 @@
 --!nocheck
 --!nolint
 
--- PrisonLifeWare - Specific Features
--- Auto Grab Guns + Remove Doors + Player ESP + Gun ESP
+-- PrisonLifeWare v2.7 - Fixed for Serotonin
+-- Only Prison Life specific features
+
+print("✅ PrisonLifeWare v2.7 loaded!")
+
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
 
 local data = {
     cached_guns = {},
@@ -10,7 +15,7 @@ local data = {
     local_position = Vector3.new(0,0,0)
 }
 
--- ==================== UI SETUP (same style as your other scripts) ====================
+-- ==================== UI SETUP (matches your other scripts) ====================
 ui.newTab("PrisonLifeWare", "PrisonLifeWare")
 
 ui.newContainer("PrisonLifeWare", "Features", "Features", {next = true})
@@ -24,11 +29,9 @@ ui.newCheckbox("PrisonLifeWare", "Visuals", "Gun ESP", true)
 
 -- ==================== CACHING ====================
 cheat.Register("onSlowUpdate", function()
-    local ws = game:GetService("Workspace")
-
     -- Guns
     local guns = {}
-    local giver = ws:FindFirstChild("Prison_ITEMS") and ws.Prison_ITEMS:FindFirstChild("giver")
+    local giver = Workspace:FindFirstChild("Prison_ITEMS") and Workspace.Prison_ITEMS:FindFirstChild("giver")
     if giver then
         for _, v in pairs(giver:GetChildren()) do
             local pickup = v:FindFirstChild("ITEMPICKUP")
@@ -41,7 +44,7 @@ cheat.Register("onSlowUpdate", function()
 
     -- Doors / Gates / Fences
     local doors = {}
-    for _, obj in pairs(ws:GetDescendants()) do
+    for _, obj in pairs(Workspace:GetDescendants()) do
         if obj:IsA("BasePart") and (obj.Name:lower():find("door") or obj.Name:lower():find("gate") or obj.Name:lower():find("fence")) then
             table.insert(doors, obj)
         end
@@ -61,15 +64,14 @@ end)
 cheat.Register("onUpdate", function()
     if not ui.getValue("PrisonLifeWare", "Features", "Auto Grab Guns") then return end
 
-    local ws = game:GetService("Workspace")
-    local giver = ws:FindFirstChild("Prison_ITEMS") and ws.Prison_ITEMS:FindFirstChild("giver")
+    local giver = Workspace:FindFirstChild("Prison_ITEMS") and Workspace.Prison_ITEMS:FindFirstChild("giver")
     if not giver then return end
 
     for _, v in pairs(giver:GetChildren()) do
         local pickup = v:FindFirstChild("ITEMPICKUP")
         if pickup then
             pcall(function()
-                ws.Remote.ItemHandler:InvokeServer(pickup)
+                Workspace.Remote.ItemHandler:InvokeServer(pickup)
             end)
         end
     end
@@ -92,8 +94,8 @@ cheat.Register("onPaint", function()
     if not ui.getValue("PrisonLifeWare", "Visuals", "Visuals Enabled") then return end
     if not ui.getValue("PrisonLifeWare", "Visuals", "Player ESP") then return end
 
-    for _, plr in ipairs(game.Players:GetPlayers()) do
-        if plr ~= game.Players.LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= Players.LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
             local pos = plr.Character.HumanoidRootPart.Position
             local screen, onScreen = utility.world_to_screen(pos)
             if onScreen then
@@ -119,4 +121,4 @@ cheat.Register("onPaint", function()
     end
 end)
 
-print("✅ PrisonLifeWare loaded! Check the side menu for toggles.")
+print("All features registered. Toggle them in the PrisonLifeWare tab.")
