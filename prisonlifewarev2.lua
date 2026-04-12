@@ -174,20 +174,35 @@ ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
     local hrp = get_hrp()
     if not hrp then return end
 
+    -- Save position before leaving
     saved_pos = Vector3.new(hrp.Position.X, hrp.Position.Y, hrp.Position.Z)
 
-    local armory = LOCATIONS["Armory"]
-    hrp.Position = armory
-    wait_ms(150)
+    local Y  = 100.7
+    local Z  = 2227.8
+    -- Exact pad positions confirmed in-game
+    local LEFT_PAD  = 813.8
+    local RIGHT_PAD = 820.3
+    local MID       = (LEFT_PAD + RIGHT_PAD) / 2  -- 817.05
 
-    hrp.Position = Vector3.new(armory.X + 2, armory.Y, armory.Z)
-    wait_ms(150)
-    hrp.Position = Vector3.new(armory.X - 2, armory.Y, armory.Z)
-    wait_ms(150)
-    hrp.Position = Vector3.new(armory.X,     armory.Y, armory.Z)
+    -- Land in the middle first
+    hrp.Position = Vector3.new(MID, Y, Z)
+    wait_ms(180)
+
+    -- Sweep: left pad -> right pad -> left pad -> right pad
+    hrp.Position = Vector3.new(LEFT_PAD,  Y, Z)
+    wait_ms(180)
+    hrp.Position = Vector3.new(RIGHT_PAD, Y, Z)
+    wait_ms(180)
+    hrp.Position = Vector3.new(LEFT_PAD,  Y, Z)
+    wait_ms(180)
+    hrp.Position = Vector3.new(RIGHT_PAD, Y, Z)
+    wait_ms(180)
+
+    -- Settle back to middle
+    hrp.Position = Vector3.new(MID, Y, Z)
     wait_ms(100)
 
-    print("[PLWare] Jiggle done. Hit Return to go back.")
+    print("[PLWare] Jiggle done! Hit Return to go back.")
 end)
 
 ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
@@ -206,7 +221,7 @@ end)
 -- ============================================
 
 ui.NewCheckbox(TAB_MAIN, C_MISC, "Auto Arrest")
-ui.NewHotkey(TAB_MAIN, C_MISC, true, 0)
+ui.NewHotkey(TAB_MAIN, C_MISC)
 ui.newSliderFloat(TAB_MAIN, C_MISC, "Arrest Range", 5.0, 30.0, 12.0)
 
 local auto_arrest_active = false
@@ -220,11 +235,11 @@ local function auto_arrest()
     local hrp = get_hrp()
     if not hrp then return end
 
-    local range      = ui.getValue(TAB_MAIN, C_MISC, "Arrest Range")
-    local my_pos     = hrp.Position
-    local players    = entity.GetPlayers(true)
-    local best       = nil
-    local best_dist  = range
+    local range     = ui.getValue(TAB_MAIN, C_MISC, "Arrest Range")
+    local my_pos    = hrp.Position
+    local players   = entity.GetPlayers(true)
+    local best      = nil
+    local best_dist = range
 
     for _, player in ipairs(players) do
         if player.IsAlive then
