@@ -1,12 +1,12 @@
 --!nocheck
 --!nolint
 
--- PrisonLifeWare v3.2 - Minimal for Serotonin
--- Only Auto Grab Guns + Remove Doors (no ESP)
+-- PrisonLifeWare v3.3 - Minimal for Serotonin
+-- Only Auto Grab Guns + Remove Doors
 
-print("✅ PrisonLifeWare v3.2 loaded!")
+print("✅ PrisonLifeWare v3.3 loaded!")
 
--- ==================== UI (exact pattern from your working scripts) ====================
+-- ==================== UI SETUP ====================
 ui.newTab("plw", "PrisonLifeWare")
 
 ui.newContainer("plw", "feat", "Features", {next = true})
@@ -47,4 +47,4 @@ cheat.Register("onUpdate", function()
     end
 end)
 
-print("Toggles registered. Turn on 'Auto Grab Guns' and 'Remove Doors'.")
+print("Toggles ready. Use the PrisonLifeWare tab on the side.")
