@@ -1,68 +1,65 @@
 -- ============================================
---  Prison Life - Remove Doors
+--  PrisonLifeWare v2
+--  github.com/loXxiyt/PrisonLifeWare
 -- ============================================
 
-local TAB = "PrisonLife"
-local CONT = "Doors"
+local TAB  = "PLWare"
+local MISC = "Misc"
+local DOOR = "Doors"
 
-ui.newTab(TAB, "Prison Life")
-ui.NewContainer(TAB, CONT, "Doors", { autosize = true })
+-- Setup UI
+ui.newTab(TAB, "PrisonLifeWare")
+ui.NewContainer(TAB, DOOR, "Doors",  { autosize = true, next = true })
+ui.NewContainer(TAB, MISC, "Misc",   { autosize = true })
 
--- Checkbox to toggle
-ui.NewCheckbox(TAB, CONT, "Remove Doors")
+-- ============================================
+--  REMOVE DOORS
+-- ============================================
 
--- Door name patterns to target
+ui.NewCheckbox(TAB, DOOR, "Remove Doors")
+
 local DOOR_NAMES = {
-    "Door", "door", "Gate", "gate", "Cell", "Bars"
+    gate    = true,
+    a_door  = true,
+    b_door  = true,
+    hitbox  = true,
 }
 
-local removed_doors = {}
+local saved_doors = {}
 
-local function set_door_state(part, removed)
-    if removed then
-        part.Transparency = 1
-        part.CanCollide = false
-    else
-        part.Transparency = 0
-        part.CanCollide = true
-    end
-end
-
-local function find_and_toggle_doors(remove)
-    for _, descendant in ipairs(game.Workspace:GetDescendants()) do
-        if descendant.ClassName == "Part" or descendant.ClassName == "UnionOperation" then
-            for _, keyword in ipairs(DOOR_NAMES) do
-                if string.find(descendant.Name, keyword) then
-                    local addr = descendant.Address
-                    if remove then
-                        -- Save original state
-                        if not removed_doors[addr] then
-                            removed_doors[addr] = {
-                                part = descendant,
-                                transparency = descendant.Transparency,
-                                canCollide = descendant.CanCollide
-                            }
-                        end
-                        set_door_state(descendant, true)
-                    else
-                        -- Restore
-                        if removed_doors[addr] then
-                            descendant.Transparency = removed_doors[addr].transparency
-                            descendant.CanCollide = removed_doors[addr].canCollide
-                            removed_doors[addr] = nil
-                        end
+local function toggle_doors(remove)
+    for _, desc in ipairs(game.Workspace:GetDescendants()) do
+        local cn = desc.ClassName
+        if cn == "Part" or cn == "UnionOperation" or cn == "Union" then
+            if DOOR_NAMES[desc.Name] then
+                local addr = tostring(desc.Address)
+                if remove then
+                    if not saved_doors[addr] then
+                        saved_doors[addr] = {
+                            part         = desc,
+                            transparency = desc.Transparency,
+                            canCollide   = desc.CanCollide,
+                        }
                     end
-                    break
+                    desc.Transparency = 1
+                    desc.CanCollide   = false
+                else
+                    if saved_doors[addr] then
+                        desc.Transparency = saved_doors[addr].transparency
+                        desc.CanCollide   = saved_doors[addr].canCollide
+                        saved_doors[addr] = nil
+                    end
                 end
             end
         end
     end
 end
 
--- Slow update to respect the checkbox
 cheat.register("onSlowUpdate", function()
-    local enabled = ui.getValue(TAB, CONT, "Remove Doors")
-    find_and_toggle_doors(enabled)
+    local enabled = ui.getValue(TAB, DOOR, "Remove Doors")
+    toggle_doors(enabled)
 end)
 
-print("[Prison Life] Remove Doors loaded.")
+-- ============================================
+
+print("[PrisonLifeWare] Loaded successfully!")
