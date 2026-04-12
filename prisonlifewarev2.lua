@@ -1,50 +1,68 @@
---!nocheck
---!nolint
+-- ============================================
+--  Prison Life - Remove Doors
+-- ============================================
 
--- PrisonLifeWare v3.3 - Minimal for Serotonin
--- Only Auto Grab Guns + Remove Doors
+local TAB = "PrisonLife"
+local CONT = "Doors"
 
-print("✅ PrisonLifeWare v3.3 loaded!")
+ui.newTab(TAB, "Prison Life")
+ui.NewContainer(TAB, CONT, "Doors", { autosize = true })
 
--- ==================== UI SETUP ====================
-ui.newTab("plw", "PrisonLifeWare")
+-- Checkbox to toggle
+ui.NewCheckbox(TAB, CONT, "Remove Doors")
 
-ui.newContainer("plw", "feat", "Features", {next = true})
-ui.newCheckbox("plw", "feat", "Auto Grab Guns", true)
-ui.newCheckbox("plw", "feat", "Remove Doors", false)
+-- Door name patterns to target
+local DOOR_NAMES = {
+    "Door", "door", "Gate", "gate", "Cell", "Bars"
+}
 
--- ==================== AUTO GRAB GUNS ====================
-cheat.Register("onUpdate", function()
-    if not ui.getValue("plw", "feat", "Auto Grab Guns") then return end
+local removed_doors = {}
 
-    local ws = game.Workspace
-    local prisonItems = ws:FindFirstChild("Prison_ITEMS")
-    if not prisonItems then return end
+local function set_door_state(part, removed)
+    if removed then
+        part.Transparency = 1
+        part.CanCollide = false
+    else
+        part.Transparency = 0
+        part.CanCollide = true
+    end
+end
 
-    local giver = prisonItems:FindFirstChild("giver")
-    if not giver then return end
-
-    for _, v in pairs(giver:GetChildren()) do
-        local pickup = v:FindFirstChild("ITEMPICKUP")
-        if pickup then
-            pcall(function()
-                ws.Remote.ItemHandler:InvokeServer(pickup)
-            end)
+local function find_and_toggle_doors(remove)
+    for _, descendant in ipairs(game.Workspace:GetDescendants()) do
+        if descendant.ClassName == "Part" or descendant.ClassName == "UnionOperation" then
+            for _, keyword in ipairs(DOOR_NAMES) do
+                if string.find(descendant.Name, keyword) then
+                    local addr = descendant.Address
+                    if remove then
+                        -- Save original state
+                        if not removed_doors[addr] then
+                            removed_doors[addr] = {
+                                part = descendant,
+                                transparency = descendant.Transparency,
+                                canCollide = descendant.CanCollide
+                            }
+                        end
+                        set_door_state(descendant, true)
+                    else
+                        -- Restore
+                        if removed_doors[addr] then
+                            descendant.Transparency = removed_doors[addr].transparency
+                            descendant.CanCollide = removed_doors[addr].canCollide
+                            removed_doors[addr] = nil
+                        end
+                    end
+                    break
+                end
+            end
         end
     end
+end
+
+-- Slow update to respect the checkbox
+cheat.register("onSlowUpdate", function()
+    local enabled = ui.getValue(TAB, CONT, "Remove Doors")
+    find_and_toggle_doors(enabled)
 end)
 
--- ==================== REMOVE DOORS ====================
-cheat.Register("onUpdate", function()
-    if not ui.getValue("plw", "feat", "Remove Doors") then return end
-
-    local ws = game.Workspace
-    for _, obj in pairs(ws:GetDescendants()) do
-        if obj:IsA("BasePart") and (obj.Name:lower():find("door") or obj.Name:lower():find("gate") or obj.Name:lower():find("fence")) then
-            obj.CanCollide = false
-            obj.Transparency = 0.7
-        end
-    end
-end)
-
-print("Toggles ready. Use the PrisonLifeWare tab on the side.")
+print("[Prison Life] Remove Doors loaded.")
