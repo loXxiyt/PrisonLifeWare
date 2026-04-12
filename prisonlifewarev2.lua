@@ -23,7 +23,6 @@ local function get_hrp()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- Simple async wait using tick
 local function wait_ms(ms)
     local start = utility.GetTickCount()
     while utility.GetTickCount() - start < ms do end
@@ -31,13 +30,12 @@ end
 
 -- ============================================
 --  ITEM ESP
---  Cache on onSlowUpdate, draw on onPaint
 -- ============================================
 
 ui.NewCheckbox(TAB_MAIN, C_ESP, "Card ESP")
 ui.NewCheckbox(TAB_MAIN, C_ESP, "Gun ESP")
-ui.NewColorpicker(TAB_MAIN, C_ESP, "Card Color", { r=0,   g=255, b=255, a=255 })
-ui.NewColorpicker(TAB_MAIN, C_ESP, "Gun Color",  { r=255, g=150, b=0,   a=255 })
+ui.NewColorpicker(TAB_MAIN, C_ESP, "Card Color", { r=0,   g=255, b=255, a=255 }, true)
+ui.NewColorpicker(TAB_MAIN, C_ESP, "Gun Color",  { r=255, g=150, b=0,   a=255 }, true)
 ui.newSliderInt(TAB_MAIN, C_ESP, "Max Distance", 50, 2000, 1000)
 
 local CARD_NAMES = {
@@ -137,7 +135,7 @@ end
 -- ============================================
 
 local LOCATIONS = {
-    ["Armory"]        = Vector3.new(814.1, 100.0, 2233.8),
+    ["Armory"]        = Vector3.new(816.7, 100.7, 2227.8),
     ["Criminal Base"] = Vector3.new(-246,  5,     -8),
     ["Prison Yard"]   = Vector3.new(50,    5,      0),
     ["Cells"]         = Vector3.new(135,   5,     40),
@@ -172,26 +170,22 @@ ui.NewButton(TAB_MAIN, C_TP, "Save Position", function()
     end
 end)
 
--- Grab gun: TP to armory -> jiggle to pick up -> return
 ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
     local hrp = get_hrp()
     if not hrp then return end
 
-    -- Save current position
     saved_pos = Vector3.new(hrp.Position.X, hrp.Position.Y, hrp.Position.Z)
 
-    -- TP to armory
     local armory = LOCATIONS["Armory"]
     hrp.Position = armory
     wait_ms(150)
 
-    -- Light jiggle: right -> left -> center
     hrp.Position = Vector3.new(armory.X + 2, armory.Y, armory.Z)
     wait_ms(150)
     hrp.Position = Vector3.new(armory.X - 2, armory.Y, armory.Z)
     wait_ms(150)
     hrp.Position = Vector3.new(armory.X,     armory.Y, armory.Z)
-    wait_ms(150)
+    wait_ms(100)
 
     print("[PLWare] Jiggle done. Hit Return to go back.")
 end)
@@ -208,14 +202,13 @@ ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
 end)
 
 -- ============================================
---  AUTO ARREST  (keybind toggle)
+--  AUTO ARREST
 -- ============================================
 
 ui.NewCheckbox(TAB_MAIN, C_MISC, "Auto Arrest")
-ui.NewHotkey(TAB_MAIN, C_MISC, true)   -- inline hotkey next to checkbox
+ui.NewHotkey(TAB_MAIN, C_MISC, true, 0)
 ui.newSliderFloat(TAB_MAIN, C_MISC, "Arrest Range", 5.0, 30.0, 12.0)
 
--- Draw keybind hint on screen
 local auto_arrest_active = false
 
 local function auto_arrest()
@@ -227,29 +220,27 @@ local function auto_arrest()
     local hrp = get_hrp()
     if not hrp then return end
 
-    local range   = ui.getValue(TAB_MAIN, C_MISC, "Arrest Range")
-    local my_pos  = hrp.Position
-    local players = entity.GetPlayers(true)
-
-    -- Find closest enemy in range
-    local best_player = nil
-    local best_dist   = range
+    local range      = ui.getValue(TAB_MAIN, C_MISC, "Arrest Range")
+    local my_pos     = hrp.Position
+    local players    = entity.GetPlayers(true)
+    local best       = nil
+    local best_dist  = range
 
     for _, player in ipairs(players) do
         if player.IsAlive then
             local dist = (player.Position - my_pos).Magnitude
             if dist < best_dist then
-                best_dist   = dist
-                best_player = player
+                best_dist = dist
+                best      = player
             end
         end
     end
 
-    if best_player then
+    if best then
         auto_arrest_active = true
-        local bone_pos = best_player:GetBonePosition("HumanoidRootPart")
-                      or best_player:GetBonePosition("Torso")
-                      or best_player.Position
+        local bone_pos = best:GetBonePosition("HumanoidRootPart")
+                      or best:GetBonePosition("Torso")
+                      or best.Position
         local sx, sy, on_screen = utility.WorldToScreen(bone_pos)
         if on_screen then
             game.SilentAim(sx, sy)
@@ -260,13 +251,12 @@ local function auto_arrest()
     end
 end
 
--- Show indicator on screen when auto arrest is locking on
 local function draw_arrest_indicator()
     if not ui.getValue(TAB_MAIN, C_MISC, "Auto Arrest") then return end
     local color = auto_arrest_active
         and Color3.fromRGB(255, 50,  50)
         or  Color3.fromRGB(100, 255, 100)
-    local label = auto_arrest_active and "AUTO ARREST: LOCKING" or "AUTO ARREST: ON"
+    local label = auto_arrest_active and "AUTO ARREST: LOCKING" or "AUTO ARREST: READY"
     local tw, _ = draw.GetTextSize(label, "Verdana")
     draw.TextOutlined(label, (1920 / 2) - (tw / 2), 30, color, "Verdana")
 end
