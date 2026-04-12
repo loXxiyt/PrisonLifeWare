@@ -28,6 +28,15 @@ local function wait_ms(ms)
     while utility.GetTickCount() - start < ms do end
 end
 
+-- Returns the best position part from a Model
+-- Cards use "Mesh", guns use "Handle", fallback to first BasePart
+local function get_part(obj)
+    return obj:FindFirstChild("Handle")
+        or obj:FindFirstChild("Mesh")
+        or obj:FindFirstChildOfClass("MeshPart")
+        or obj:FindFirstChildOfClass("Part")
+end
+
 -- ============================================
 --  ITEM ESP
 -- ============================================
@@ -38,26 +47,25 @@ ui.NewColorpicker(TAB_MAIN, C_ESP, "Card Color", { r=0,   g=255, b=255, a=255 },
 ui.NewColorpicker(TAB_MAIN, C_ESP, "Gun Color",  { r=255, g=150, b=0,   a=255 }, true)
 ui.newSliderInt(TAB_MAIN, C_ESP, "Max Distance", 50, 2000, 1000)
 
--- Confirmed in-game names
 local CARD_NAMES = {
-    ["Key card"]   = true,
-    ["Key Card"]   = true,
+    ["Key card"] = true,
+    ["Key Card"] = true,
 }
 
 local GUN_NAMES = {
-    ["AK-47"]        = true,
-    ["Remington 870"]= true,
-    ["Taser"]        = true,
-    ["M9"]           = true,
-    ["FAL"]          = true,
-    ["M700"]         = true,
-    ["MP5"]          = true,
-    ["M4A1"]         = true,
-    ["Revolver"]     = true,
-    ["C4 Explosive"] = true,
-    ["Riot Shield"]  = true,
-    ["Crude Knife"]  = true,
-    ["Hammer"]       = true,
+    ["AK-47"]         = true,
+    ["Remington 870"] = true,
+    ["Taser"]         = true,
+    ["M9"]            = true,
+    ["FAL"]           = true,
+    ["M700"]          = true,
+    ["MP5"]           = true,
+    ["M4A1"]          = true,
+    ["Revolver"]      = true,
+    ["C4 Explosive"]  = true,
+    ["Riot Shield"]   = true,
+    ["Crude Knife"]   = true,
+    ["Hammer"]        = true,
 }
 
 local cached_cards = {}
@@ -82,15 +90,15 @@ local function cache_items()
     for _, obj in pairs(children) do
         local cn = obj.ClassName
         if cn == "Model" or cn == "Tool" then
-            local handle = obj:FindFirstChild("Handle")
-            if handle then
-                local pos  = handle.Position
+            local part = get_part(obj)
+            if part then
+                local pos  = part.Position
                 local dist = cam_pos and (cam_pos - pos).Magnitude or 0
                 if dist <= max_dist then
                     if card_on and CARD_NAMES[obj.Name] then
                         table.insert(cached_cards, { pos = pos, dist = dist, name = obj.Name })
                     elseif gun_on and GUN_NAMES[obj.Name] then
-                        table.insert(cached_guns, { pos = pos, dist = dist, name = obj.Name })
+                        table.insert(cached_guns,  { pos = pos, dist = dist, name = obj.Name })
                     end
                 end
             end
@@ -139,12 +147,12 @@ end
 -- ============================================
 
 local LOCATIONS = {
-    ["Armory"]        = Vector3.new(816.7, 100.7, 2227.8),
-    ["Criminal Base"] = Vector3.new(-246,  5,     -8),
-    ["Prison Yard"]   = Vector3.new(50,    5,      0),
-    ["Cells"]         = Vector3.new(135,   5,     40),
-    ["Cafeteria"]     = Vector3.new(100,   5,    -50),
-    ["Outside Gate"]  = Vector3.new(0,     5,     80),
+    ["Armory"]        = Vector3.new(816.7,  100.7, 2227.8),
+    ["Criminal Base"] = Vector3.new(-974.4, 108.3, 2057.2),
+    ["Prison Yard"]   = Vector3.new(50,     5,     0),
+    ["Cells"]         = Vector3.new(135,    5,     40),
+    ["Cafeteria"]     = Vector3.new(100,    5,    -50),
+    ["Outside Gate"]  = Vector3.new(0,      5,     80),
 }
 
 local location_names = {}
@@ -164,7 +172,6 @@ ui.NewButton(TAB_MAIN, C_TP, "Teleport", function()
     end
 end)
 
--- Store as plain numbers to avoid Vector3 reference bugs
 local saved_x, saved_y, saved_z = nil, nil, nil
 
 ui.NewButton(TAB_MAIN, C_TP, "Save Position", function()
@@ -181,7 +188,6 @@ ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
     local hrp = get_hrp()
     if not hrp then return end
 
-    -- Save position
     saved_x = hrp.Position.X
     saved_y = hrp.Position.Y
     saved_z = hrp.Position.Z
@@ -189,11 +195,8 @@ ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
     local Y = 100.7
     local Z = 2227.8
 
-    -- Land center
     hrp.Position = Vector3.new(817.0, Y, Z)
     wait_ms(200)
-
-    -- Sweep with more time on the right pad (820.3)
     hrp.Position = Vector3.new(820.3, Y, Z)
     wait_ms(250)
     hrp.Position = Vector3.new(813.8, Y, Z)
@@ -206,7 +209,6 @@ ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
     print("[PLWare] Jiggle done! Returning in 1 second...")
     wait_ms(1000)
 
-    -- Auto return
     local hrp2 = get_hrp()
     if hrp2 and saved_x then
         hrp2.Position = Vector3.new(saved_x, saved_y, saved_z)
@@ -226,7 +228,7 @@ ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
 end)
 
 -- ============================================
---  AUTO ARREST  (simple checkbox + slider only)
+--  AUTO ARREST
 -- ============================================
 
 ui.NewCheckbox(TAB_MAIN, C_MISC, "Auto Arrest")
