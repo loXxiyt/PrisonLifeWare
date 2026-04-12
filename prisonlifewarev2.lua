@@ -38,22 +38,26 @@ ui.NewColorpicker(TAB_MAIN, C_ESP, "Card Color", { r=0,   g=255, b=255, a=255 },
 ui.NewColorpicker(TAB_MAIN, C_ESP, "Gun Color",  { r=255, g=150, b=0,   a=255 }, true)
 ui.newSliderInt(TAB_MAIN, C_ESP, "Max Distance", 50, 2000, 1000)
 
+-- Confirmed in-game names
 local CARD_NAMES = {
-    ["Guard Card"] = true,
-    ["GuardCard"]  = true,
-    ["Card"]       = true,
+    ["Key card"]   = true,
+    ["Key Card"]   = true,
 }
 
 local GUN_NAMES = {
-    ["Gun"]     = true,
-    ["Pistol"]  = true,
-    ["Rifle"]   = true,
-    ["Shotgun"] = true,
-    ["AK47"]    = true,
-    ["M4"]      = true,
-    ["Uzi"]     = true,
-    ["Sniper"]  = true,
-    ["Weapon"]  = true,
+    ["AK-47"]        = true,
+    ["Remington 870"]= true,
+    ["Taser"]        = true,
+    ["M9"]           = true,
+    ["FAL"]          = true,
+    ["M700"]         = true,
+    ["MP5"]          = true,
+    ["M4A1"]         = true,
+    ["Revolver"]     = true,
+    ["C4 Explosive"] = true,
+    ["Riot Shield"]  = true,
+    ["Crude Knife"]  = true,
+    ["Hammer"]       = true,
 }
 
 local cached_cards = {}
@@ -86,7 +90,7 @@ local function cache_items()
                     if card_on and CARD_NAMES[obj.Name] then
                         table.insert(cached_cards, { pos = pos, dist = dist, name = obj.Name })
                     elseif gun_on and GUN_NAMES[obj.Name] then
-                        table.insert(cached_guns,  { pos = pos, dist = dist, name = obj.Name })
+                        table.insert(cached_guns, { pos = pos, dist = dist, name = obj.Name })
                     end
                 end
             end
@@ -120,7 +124,7 @@ local function draw_cached_esp()
 
     if card_on then
         for _, entry in pairs(cached_cards) do
-            draw_entry(entry, "CARD", card_col)
+            draw_entry(entry, "KEY CARD", card_col)
         end
     end
     if gun_on then
@@ -155,18 +159,21 @@ ui.NewButton(TAB_MAIN, C_TP, "Teleport", function()
     local selected = ui.getValue(TAB_MAIN, C_TP, "Location")
     local dest = LOCATIONS[selected]
     if dest then
-        hrp.Position = dest
+        hrp.Position = Vector3.new(dest.X, dest.Y, dest.Z)
         print("[PLWare] Teleported to " .. selected)
     end
 end)
 
-local saved_pos = nil
+-- Store as plain numbers to avoid Vector3 reference bugs
+local saved_x, saved_y, saved_z = nil, nil, nil
 
 ui.NewButton(TAB_MAIN, C_TP, "Save Position", function()
     local hrp = get_hrp()
     if hrp then
-        saved_pos = Vector3.new(hrp.Position.X, hrp.Position.Y, hrp.Position.Z)
-        print("[PLWare] Position saved.")
+        saved_x = hrp.Position.X
+        saved_y = hrp.Position.Y
+        saved_z = hrp.Position.Z
+        print(string.format("[PLWare] Position saved: %.1f, %.1f, %.1f", saved_x, saved_y, saved_z))
     end
 end)
 
@@ -174,42 +181,44 @@ ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
     local hrp = get_hrp()
     if not hrp then return end
 
-    -- Save position before leaving
-    saved_pos = Vector3.new(hrp.Position.X, hrp.Position.Y, hrp.Position.Z)
+    -- Save position
+    saved_x = hrp.Position.X
+    saved_y = hrp.Position.Y
+    saved_z = hrp.Position.Z
 
-    local Y  = 100.7
-    local Z  = 2227.8
-    -- Exact pad positions confirmed in-game
-    local LEFT_PAD  = 813.8
-    local RIGHT_PAD = 820.3
-    local MID       = (LEFT_PAD + RIGHT_PAD) / 2  -- 817.05
+    local Y = 100.7
+    local Z = 2227.8
 
-    -- Land in the middle first
-    hrp.Position = Vector3.new(MID, Y, Z)
-    wait_ms(180)
+    -- Land center
+    hrp.Position = Vector3.new(817.0, Y, Z)
+    wait_ms(200)
 
-    -- Sweep: left pad -> right pad -> left pad -> right pad
-    hrp.Position = Vector3.new(LEFT_PAD,  Y, Z)
-    wait_ms(180)
-    hrp.Position = Vector3.new(RIGHT_PAD, Y, Z)
-    wait_ms(180)
-    hrp.Position = Vector3.new(LEFT_PAD,  Y, Z)
-    wait_ms(180)
-    hrp.Position = Vector3.new(RIGHT_PAD, Y, Z)
-    wait_ms(180)
+    -- Sweep with more time on the right pad (820.3)
+    hrp.Position = Vector3.new(820.3, Y, Z)
+    wait_ms(250)
+    hrp.Position = Vector3.new(813.8, Y, Z)
+    wait_ms(200)
+    hrp.Position = Vector3.new(820.3, Y, Z)
+    wait_ms(250)
+    hrp.Position = Vector3.new(819.0, Y, Z)
+    wait_ms(150)
 
-    -- Settle back to middle
-    hrp.Position = Vector3.new(MID, Y, Z)
-    wait_ms(100)
+    print("[PLWare] Jiggle done! Returning in 1 second...")
+    wait_ms(1000)
 
-    print("[PLWare] Jiggle done! Hit Return to go back.")
+    -- Auto return
+    local hrp2 = get_hrp()
+    if hrp2 and saved_x then
+        hrp2.Position = Vector3.new(saved_x, saved_y, saved_z)
+        print("[PLWare] Auto returned!")
+    end
 end)
 
 ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
     local hrp = get_hrp()
     if not hrp then return end
-    if saved_pos then
-        hrp.Position = saved_pos
+    if saved_x then
+        hrp.Position = Vector3.new(saved_x, saved_y, saved_z)
         print("[PLWare] Returned.")
     else
         print("[PLWare] No saved position yet.")
@@ -217,11 +226,10 @@ ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
 end)
 
 -- ============================================
---  AUTO ARREST
+--  AUTO ARREST  (simple checkbox + slider only)
 -- ============================================
 
 ui.NewCheckbox(TAB_MAIN, C_MISC, "Auto Arrest")
-ui.NewHotkey(TAB_MAIN, C_MISC)
 ui.newSliderFloat(TAB_MAIN, C_MISC, "Arrest Range", 5.0, 30.0, 12.0)
 
 local auto_arrest_active = false
