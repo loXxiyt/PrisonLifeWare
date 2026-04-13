@@ -18,40 +18,27 @@ ui.NewContainer(TAB_MAIN, C_INMATE, "Inmate",    { autosize = true, next = true 
 ui.NewContainer(TAB_MAIN, C_MISC,   "Misc",      { autosize = true })
 
 -- ============================================
---  SCHEDULER (from Rivals script pattern)
+--  SCHEDULER
 -- ============================================
 
 local scheduler = { tasks = {}, intervals = {} }
 
 function scheduler.after(delay_ms, cb)
-    table.insert(scheduler.tasks, {
-        time = utility.GetTickCount() + delay_ms,
-        cb   = cb
-    })
+    table.insert(scheduler.tasks, { time = utility.GetTickCount() + delay_ms, cb = cb })
 end
 
 function scheduler.every(delay_ms, cb)
-    table.insert(scheduler.intervals, {
-        delay    = delay_ms,
-        last_run = utility.GetTickCount(),
-        cb       = cb
-    })
+    table.insert(scheduler.intervals, { delay = delay_ms, last_run = utility.GetTickCount(), cb = cb })
 end
 
 function scheduler.run()
     local now = utility.GetTickCount()
     for i = #scheduler.tasks, 1, -1 do
         local t = scheduler.tasks[i]
-        if now >= t.time then
-            t.cb()
-            table.remove(scheduler.tasks, i)
-        end
+        if now >= t.time then t.cb(); table.remove(scheduler.tasks, i) end
     end
     for _, iv in ipairs(scheduler.intervals) do
-        if now - iv.last_run >= iv.delay then
-            iv.last_run = now
-            iv.cb()
-        end
+        if now - iv.last_run >= iv.delay then iv.last_run = now; iv.cb() end
     end
 end
 
@@ -66,18 +53,14 @@ end
 local function get_char()
     local lp = get_local_player()
     if not lp then return nil end
-    local ok, r = pcall(function()
-        return game.Workspace:FindFirstChild(lp.Name)
-    end)
+    local ok, r = pcall(function() return game.Workspace:FindFirstChild(lp.Name) end)
     return ok and r or nil
 end
 
 local function get_hrp()
     local char = get_char()
     if not char then return nil end
-    local ok, r = pcall(function()
-        return char:FindFirstChild("HumanoidRootPart")
-    end)
+    local ok, r = pcall(function() return char:FindFirstChild("HumanoidRootPart") end)
     return ok and r or nil
 end
 
@@ -158,8 +141,8 @@ local cached_guns  = {}
 local function cache_items()
     cached_cards = {}
     cached_guns  = {}
-    local card_on = ui.getValue(TAB_MAIN, C_ESP, "Card ESP")
-    local gun_on  = ui.getValue(TAB_MAIN, C_ESP, "Gun ESP")
+    local card_on  = ui.getValue(TAB_MAIN, C_ESP, "Card ESP")
+    local gun_on   = ui.getValue(TAB_MAIN, C_ESP, "Gun ESP")
     if not card_on and not gun_on then return end
     local max_dist = ui.getValue(TAB_MAIN, C_ESP, "Max Distance")
     local cam_pos  = game.CameraPosition
@@ -187,8 +170,8 @@ local function draw_cached_esp()
     local card_on = ui.getValue(TAB_MAIN, C_ESP, "Card ESP")
     local gun_on  = ui.getValue(TAB_MAIN, C_ESP, "Gun ESP")
     if not card_on and not gun_on then return end
-    local cc = ui.getValue(TAB_MAIN, C_ESP, "Card Color")
-    local gc = ui.getValue(TAB_MAIN, C_ESP, "Gun Color")
+    local cc  = ui.getValue(TAB_MAIN, C_ESP, "Card Color")
+    local gc  = ui.getValue(TAB_MAIN, C_ESP, "Gun Color")
     local cc3 = Color3.fromRGB(cc.r, cc.g, cc.b)
     local gc3 = Color3.fromRGB(gc.r, gc.g, gc.b)
     local function de(e, lbl, col)
@@ -221,7 +204,7 @@ local LOCS = {
     ["Cafeteria"]     = Vector3.new(919.1,  100.0, 2227.9),
     ["Outside Gate"]  = Vector3.new(491.4,  95.5,  2052.5),
 }
-local esc_locs = {
+local esc_locs  = {
     ["Criminal Base"] = Vector3.new(-974.4, 108.3, 2057.2),
     ["Outside Gate"]  = Vector3.new(491.4,  95.5,  2052.5),
 }
@@ -279,7 +262,7 @@ ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
     print("[PLWare] Jiggle done! Returning in 1s...")
     wait_ms(1000)
     local h2 = get_hrp()
-    if h2 and saved_x then h2.Position = Vector3.new(saved_x,saved_y,saved_z) end
+    if h2 and saved_x then h2.Position = Vector3.new(saved_x, saved_y, saved_z) end
 end)
 
 ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
@@ -292,29 +275,24 @@ ui.NewButton(TAB_MAIN, C_TP, "TP + Grab Key Card", function()
     if not hrp then return end
     if #cached_cards == 0 then print("[PLWare] Enable Card ESP first."); return end
     local best, bd = nil, math.huge
-    local mp = hrp.Position
     for _, c in ipairs(cached_cards) do
-        local d = (c.pos - mp).Magnitude
+        local d = (c.pos - hrp.Position).Magnitude
         if d < bd then bd = d; best = c end
     end
     if not best then return end
     save_pos()
-    hrp.Position = Vector3.new(best.pos.X, best.pos.Y+1, best.pos.Z)
-    wait_ms(150)
-    hrp.Position = Vector3.new(best.pos.X+1, best.pos.Y+1, best.pos.Z)
-    wait_ms(150)
-    hrp.Position = Vector3.new(best.pos.X-1, best.pos.Y+1, best.pos.Z)
-    wait_ms(150)
-    hrp.Position = Vector3.new(best.pos.X, best.pos.Y+1, best.pos.Z)
-    wait_ms(300)
+    hrp.Position = Vector3.new(best.pos.X,   best.pos.Y+1, best.pos.Z)   wait_ms(150)
+    hrp.Position = Vector3.new(best.pos.X+1, best.pos.Y+1, best.pos.Z)   wait_ms(150)
+    hrp.Position = Vector3.new(best.pos.X-1, best.pos.Y+1, best.pos.Z)   wait_ms(150)
+    hrp.Position = Vector3.new(best.pos.X,   best.pos.Y+1, best.pos.Z)   wait_ms(300)
     print(string.format("[PLWare] Grabbed Key Card (%.0fm)", bd))
     wait_ms(500)
     local h2 = get_hrp()
-    if h2 and saved_x then h2.Position = Vector3.new(saved_x,saved_y,saved_z) end
+    if h2 and saved_x then h2.Position = Vector3.new(saved_x, saved_y, saved_z) end
 end)
 
 -- ============================================
---  GUARD FEATURES
+--  GUARD FEATURES UI
 -- ============================================
 
 ui.NewCheckbox(TAB_MAIN, C_GUARD, "Auto Arrest")
@@ -325,7 +303,7 @@ ui.NewCheckbox(TAB_MAIN, C_GUARD, "Safety TP After Arrest")
 ui.NewCheckbox(TAB_MAIN, C_GUARD, "Auto Reload")
 
 -- ============================================
---  INMATE FEATURES
+--  INMATE FEATURES UI
 -- ============================================
 
 ui.NewCheckbox(TAB_MAIN, C_INMATE, "Low Health Escape")
@@ -335,7 +313,7 @@ ui.NewCheckbox(TAB_MAIN, C_INMATE, "Anti Arrest TP")
 ui.newSliderFloat(TAB_MAIN, C_INMATE, "Guard Detect Range", 5.0, 20.0, 8.0)
 
 -- ============================================
---  MISC
+--  MISC UI
 -- ============================================
 
 ui.NewCheckbox(TAB_MAIN, C_MISC, "FPS Boost")
@@ -344,31 +322,40 @@ ui.NewCheckbox(TAB_MAIN, C_MISC, "FPS Boost")
 --  GUARD STATE
 -- ============================================
 
--- Per-player arrest cooldown tracking
--- key = player name, value = tick of last arrest attempt
-local arrest_history  = {}
-local ARREST_CD       = 350   -- ms between clicks on same player
-local NEXT_TARGET_CD  = 2000  -- ms before targeting someone new after an arrest
+-- Track when a player was successfully arrested (confirmed by them disappearing)
+-- Key = player name, value = tick when we last successfully arrested them
+local arrested_players = {}
+local POST_ARREST_CD   = 3000  -- wait 3s before re-targeting same player
 
-local last_arrest_ms  = 0
-local tp_target_name  = nil
+-- Click cooldown — fast enough to spam arrests
+local CLICK_CD        = 250
+local last_click_ms   = 0
+
 local arrest_active   = false
 local arrest_status   = "READY"
+local tp_target_name  = nil
 local safety_pending  = false
 local safety_time     = 0
-local last_escape_ms  = 0
-local last_anti_ms    = 0
 
-local function can_target(player)
-    local now = utility.GetTickCount()
-    local last = arrest_history[player.Name]
-    if not last then return true end
-    -- Don't re-target someone we just arrested for NEXT_TARGET_CD
-    return now - last >= NEXT_TARGET_CD
+-- Check if player was recently arrested (to avoid re-arresting immediately)
+local function recently_arrested(player)
+    local last = arrested_players[player.Name]
+    if not last then return false end
+    return utility.GetTickCount() - last < POST_ARREST_CD
 end
 
-local function mark_arrested(player)
-    arrest_history[player.Name] = utility.GetTickCount()
+-- Mark player as arrested when they stop being visible/alive
+local function check_arrest_success(player_name)
+    -- Player is considered arrested if they're no longer in enemy list
+    local players = entity.GetPlayers(true)
+    for _, p in ipairs(players) do
+        if p.Name == player_name and p.IsAlive then
+            return false -- still alive and enemy, not arrested yet
+        end
+    end
+    -- Not found in alive enemies = arrested or dead
+    arrested_players[player_name] = utility.GetTickCount()
+    return true
 end
 
 local function find_target(range)
@@ -378,7 +365,7 @@ local function find_target(range)
     local players = entity.GetPlayers(true)
     local best, best_dist = nil, range
     for _, p in ipairs(players) do
-        if p.IsAlive and can_target(p) then
+        if p.IsAlive and not recently_arrested(p) then
             local valid = is_criminal(p) or inmate_has_weapon(p)
             if valid then
                 local d = (p.Position - my_pos).Magnitude
@@ -389,7 +376,7 @@ local function find_target(range)
     return best
 end
 
--- Auto Arrest - smooth aura style
+-- Auto Arrest
 local function run_auto_arrest()
     if not ui.getValue(TAB_MAIN, C_GUARD, "Auto Arrest") then
         arrest_active = false
@@ -411,9 +398,9 @@ local function run_auto_arrest()
     end
     arrest_active = true
     arrest_status = "LOCKING: " .. best.Name
-    if now - last_arrest_ms >= ARREST_CD then
-        last_arrest_ms = now
-        -- TP beside target for reliable arrest range
+
+    if now - last_click_ms >= CLICK_CD then
+        last_click_ms = now
         local hrp = get_hrp()
         if hrp then
             hrp.Position = Vector3.new(
@@ -422,8 +409,9 @@ local function run_auto_arrest()
                 best.Position.Z + 2.5
             )
         end
-        if aim_and_click(best) then
-            mark_arrested(best)
+        aim_and_click(best)
+        -- Check if arrest succeeded
+        if check_arrest_success(best.Name) then
             if ui.getValue(TAB_MAIN, C_GUARD, "Safety TP After Arrest") then
                 safety_pending = true
                 safety_time    = now
@@ -432,57 +420,102 @@ local function run_auto_arrest()
     end
 end
 
--- TP Arrest - same logic with wider range
+-- TP Arrest — keeps spamming same target until they disappear
+-- Only moves to next target after current one is confirmed arrested
+local tp_current_target = nil  -- the actual player object we're chasing
+
 local function run_tp_arrest()
     if not ui.getValue(TAB_MAIN, C_GUARD, "TP Arrest") then
-        tp_target_name = nil
+        tp_target_name    = nil
+        tp_current_target = nil
         return
     end
     if not has_handcuffs() then return end
+
     local hrp = get_hrp()
     if not hrp then return end
+
     local now   = utility.GetTickCount()
     local range = ui.getValue(TAB_MAIN, C_GUARD, "TP Arrest Range")
-    local best  = find_target(range)
-    if not best then
-        tp_target_name = nil
-        return
+
+    -- If we have a current target, keep going until they're gone
+    -- Only find a new target if we have none or current one is arrested/dead
+    if tp_current_target then
+        -- Check if current target is still alive and available
+        local still_valid = false
+        local players = entity.GetPlayers(true)
+        for _, p in ipairs(players) do
+            if p.Name == tp_current_target and p.IsAlive then
+                still_valid = true
+                break
+            end
+        end
+        if not still_valid then
+            -- Target arrested or dead — mark it and clear
+            arrested_players[tp_current_target] = utility.GetTickCount()
+            tp_current_target = nil
+            tp_target_name    = nil
+            if ui.getValue(TAB_MAIN, C_GUARD, "Safety TP After Arrest") then
+                safety_pending = true
+                safety_time    = now
+            end
+            return
+        end
+    else
+        -- Find a new target
+        local best = find_target(range)
+        if not best then
+            tp_target_name    = nil
+            tp_current_target = nil
+            return
+        end
+        -- New target acquired
+        if tp_target_name ~= best.Name then
+            tp_target_name    = best.Name
+            tp_current_target = best.Name
+            save_pos()
+        end
     end
-    if tp_target_name ~= best.Name then
-        tp_target_name = best.Name
-        save_pos()
+
+    -- Get fresh reference to current target
+    local target_player = nil
+    local players = entity.GetPlayers(true)
+    for _, p in ipairs(players) do
+        if p.Name == tp_current_target and p.IsAlive then
+            target_player = p
+            break
+        end
     end
-    -- TP directly behind target
-    local tp  = best.Position
+    if not target_player then return end
+
+    -- TP right beside target every click cycle
+    local tp  = target_player.Position
     local dx  = tp.X - hrp.Position.X
     local dz  = tp.Z - hrp.Position.Z
     local mag = math.sqrt(dx*dx + dz*dz)
-    if mag > 0 then
+
+    if mag > 0.5 then
         hrp.Position = Vector3.new(
             tp.X - (dx/mag)*2,
             tp.Y,
             tp.Z - (dz/mag)*2
         )
     else
-        hrp.Position = Vector3.new(tp.X, tp.Y, tp.Z + 2)
+        hrp.Position = Vector3.new(tp.X + 2, tp.Y, tp.Z)
     end
-    if now - last_arrest_ms >= ARREST_CD then
-        last_arrest_ms = now
-        if aim_and_click(best) then
-            mark_arrested(best)
-            if ui.getValue(TAB_MAIN, C_GUARD, "Safety TP After Arrest") then
-                safety_pending = true
-                safety_time    = now
-            end
-        end
+
+    -- Spam arrest clicks on same target
+    if now - last_click_ms >= CLICK_CD then
+        last_click_ms = now
+        aim_and_click(target_player)
     end
 end
 
--- Safety TP: wait 1.8s after arrest then TP to armory
+-- Safety TP: 2s after successful arrest, TP to armory
 local function run_safety_tp()
     if not safety_pending then return end
     local now = utility.GetTickCount()
-    if now - safety_time >= 1800 then
+    if now - safety_time >= 2000 then
         safety_pending = false
         local hrp = get_hrp()
         if hrp then
@@ -492,23 +525,20 @@ local function run_safety_tp()
     end
 end
 
--- Auto Reload: detect when gun has no ammo, press R
+-- Auto Reload
 local last_reload_ms = 0
 local function run_auto_reload()
     if not ui.getValue(TAB_MAIN, C_GUARD, "Auto Reload") then return end
     local now = utility.GetTickCount()
     if now - last_reload_ms < 1000 then return end
-    -- Check ammo by looking at GunStates on equipped tool
     local char = get_char()
     if not char then return end
     local tool = char:FindFirstChildOfClass("Tool")
     if not tool then return end
     local gs = tool:FindFirstChild("GunStates")
     if not gs then return end
-    local ok, ammo_attr = pcall(function()
-        return gs:GetAttribute("Ammo")
-    end)
-    if ok and ammo_attr and ammo_attr.Value == 0 then
+    local ok, attr = pcall(function() return gs:GetAttribute("Ammo") end)
+    if ok and attr and attr.Value == 0 then
         last_reload_ms = now
         keyboard.Click("r", 30)
         print("[PLWare] Auto reload!")
@@ -518,6 +548,9 @@ end
 -- ============================================
 --  INMATE LOGIC
 -- ============================================
+
+local last_escape_ms = 0
+local last_anti_ms   = 0
 
 local function run_low_health_escape()
     if not ui.getValue(TAB_MAIN, C_INMATE, "Low Health Escape") then return end
@@ -548,9 +581,9 @@ local function run_anti_arrest()
     if now - last_anti_ms < 2000 then return end
     local hrp = get_hrp()
     if not hrp then return end
-    local range  = ui.getValue(TAB_MAIN, C_INMATE, "Guard Detect Range")
-    local my_pos = hrp.Position
-    local lp     = get_local_player()
+    local range   = ui.getValue(TAB_MAIN, C_INMATE, "Guard Detect Range")
+    local my_pos  = hrp.Position
+    local lp      = get_local_player()
     local players = entity.GetPlayers()
     for _, p in ipairs(players) do
         if p.IsAlive and not is_criminal(p) and lp and p.Name ~= lp.Name then
@@ -566,42 +599,31 @@ end
 
 -- ============================================
 --  FPS BOOST
--- Safe version - only adjusts lighting, no mesh changes
+--  Safe version using only Lighting service properties
+--  that Serotonin actually exposes
 -- ============================================
 
-local fps_on  = false
-local orig_brightness   = nil
-local orig_ambient      = nil
-local orig_fog_end      = nil
-local orig_shadow_softness = nil
+local fps_on = false
 
 local function toggle_fps_boost(enable)
     if enable == fps_on then return end
     fps_on = enable
-    local ok, lighting = pcall(function()
-        return game.GetService("Lighting")
-    end)
-    if not ok or not lighting then return end
+
+    -- Try each property individually with pcall so one failure doesn't stop others
+    local lighting = game.GetService("Lighting")
+    if not lighting then return end
+
     if enable then
-        -- Save originals
-        orig_brightness      = lighting.Brightness
-        orig_ambient         = lighting.Ambient
-        orig_fog_end         = lighting.FogEnd
-        orig_shadow_softness = lighting.ShadowSoftness
-        -- Apply performance settings
-        lighting.Brightness      = 2
-        lighting.Ambient         = Color3.fromRGB(178, 178, 178)
-        lighting.FogEnd          = 100000
-        lighting.ShadowSoftness  = 0
+        pcall(function() lighting.GlobalShadows  = false end)
+        pcall(function() lighting.FogEnd         = 100000 end)
+        pcall(function() lighting.FogStart       = 99999  end)
+        pcall(function() lighting.ShadowSoftness = 0      end)
         print("[PLWare] FPS Boost ON")
     else
-        -- Restore originals
-        if orig_brightness then
-            lighting.Brightness      = orig_brightness
-            lighting.Ambient         = orig_ambient
-            lighting.FogEnd          = orig_fog_end
-            lighting.ShadowSoftness  = orig_shadow_softness
-        end
+        pcall(function() lighting.GlobalShadows  = true   end)
+        pcall(function() lighting.FogEnd         = 1000   end)
+        pcall(function() lighting.FogStart       = 0      end)
+        pcall(function() lighting.ShadowSoftness = 0.2    end)
         print("[PLWare] FPS Boost OFF")
     end
 end
@@ -638,7 +660,7 @@ local function draw_indicators()
         end
     end
 
-    if ui.getValue(TAB_MAIN, C_GUARD, "Safety TP After Arrest") and safety_pending then
+    if safety_pending then
         line("SAFETY TP: PENDING...", Color3.fromRGB(150,255,150))
     end
 
@@ -651,10 +673,10 @@ local function draw_indicators()
         if lp and lp.MaxHealth > 0 then
             local hp  = math.floor((lp.Health / lp.MaxHealth) * 100)
             local thr = ui.getValue(TAB_MAIN, C_INMATE, "HP Threshold %")
-            local col = hp <= thr
-                and Color3.fromRGB(255,50,50)
-                or  Color3.fromRGB(100,255,100)
-            line(string.format("HP: %d%% (escape at %d%%)", hp, thr), col)
+            line(
+                string.format("HP: %d%% (escape at %d%%)", hp, thr),
+                hp <= thr and Color3.fromRGB(255,50,50) or Color3.fromRGB(100,255,100)
+            )
         end
     end
 
@@ -668,16 +690,14 @@ local function draw_indicators()
 end
 
 -- ============================================
---  REGISTER CALLBACKS
+--  CALLBACKS
 -- ============================================
 
--- Cache items every 1s
 scheduler.every(1000, cache_items)
 
 cheat.register("onPaint", function()
     draw_cached_esp()
     draw_indicators()
-    -- FPS boost toggle
     local want = ui.getValue(TAB_MAIN, C_MISC, "FPS Boost")
     if want ~= fps_on then toggle_fps_boost(want) end
 end)
