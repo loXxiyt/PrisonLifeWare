@@ -117,6 +117,18 @@ local function aim_and_click(player)
     return false
 end
 
+-- Check if a player is still a valid arrest target
+-- Returns false if they became an inmate (got arrested)
+local function is_valid_target(player)
+    if not player.IsAlive then return false end
+    -- Still a criminal = valid
+    if is_criminal(player) then return true end
+    -- Inmate with weapon = valid
+    if inmate_has_weapon(player) then return true end
+    -- Otherwise they became a regular inmate = skip
+    return false
+end
+
 -- ============================================
 --  ITEM ESP
 -- ============================================
@@ -156,7 +168,7 @@ local function cache_items()
                 local dist = cam_pos and (cam_pos - pos).Magnitude or 0
                 if dist <= max_dist then
                     if card_on and CARD_NAMES[obj.Name] then
-                        table.insert(cached_cards, {pos=pos, dist=dist, name=obj.Name})
+                        table.insert(cached_cards, {pos=pos, dist=dist, name=obj.Name, obj=obj})
                     elseif gun_on and GUN_NAMES[obj.Name] then
                         table.insert(cached_guns, {pos=pos, dist=dist, name=obj.Name})
                     end
@@ -245,7 +257,9 @@ end
 
 ui.NewButton(TAB_MAIN, C_TP, "Save Position", function()
     save_pos()
-    if saved_x then print(string.format("[PLWare] Saved: %.1f %.1f %.1f", saved_x, saved_y, saved_z)) end
+    if saved_x then
+        print(string.format("[PLWare] Saved: %.1f %.1f %.1f", saved_x, saved_y, saved_z))
+    end
 end)
 
 ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
@@ -270,25 +284,44 @@ ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
     else print("[PLWare] No saved position.") end
 end)
 
+-- TP to card + press E to pick it up
 ui.NewButton(TAB_MAIN, C_TP, "TP + Grab Key Card", function()
     local hrp = get_hrp()
     if not hrp then return end
-    if #cached_cards == 0 then print("[PLWare] Enable Card ESP first."); return end
+    if #cached_cards == 0 then
+        print("[PLWare] Enable Card ESP first.")
+        return
+    end
+
+    -- Find closest card
     local best, bd = nil, math.huge
     for _, c in ipairs(cached_cards) do
         local d = (c.pos - hrp.Position).Magnitude
         if d < bd then bd = d; best = c end
     end
     if not best then return end
+
     save_pos()
-    hrp.Position = Vector3.new(best.pos.X,   best.pos.Y+1, best.pos.Z)   wait_ms(150)
-    hrp.Position = Vector3.new(best.pos.X+1, best.pos.Y+1, best.pos.Z)   wait_ms(150)
-    hrp.Position = Vector3.new(best.pos.X-1, best.pos.Y+1, best.pos.Z)   wait_ms(150)
-    hrp.Position = Vector3.new(best.pos.X,   best.pos.Y+1, best.pos.Z)   wait_ms(300)
-    print(string.format("[PLWare] Grabbed Key Card (%.0fm)", bd))
-    wait_ms(500)
+
+    -- TP directly onto the card
+    hrp.Position = Vector3.new(best.pos.X, best.pos.Y + 1, best.pos.Z)
+    wait_ms(200)
+
+    -- Press E multiple times to interact/pick up
+    for i = 1, 5 do
+        keyboard.Click("e", 30)
+        wait_ms(100)
+    end
+
+    print(string.format("[PLWare] Attempted card pickup (%.0fm)", bd))
+
+    -- Wait a moment then return
+    wait_ms(400)
     local h2 = get_hrp()
-    if h2 and saved_x then h2.Position = Vector3.new(saved_x, saved_y, saved_z) end
+    if h2 and saved_x then
+        h2.Position = Vector3.new(saved_x, saved_y, saved_z)
+        print("[PLWare] Returned after card grab!")
+    end
 end)
 
 -- ============================================
@@ -299,7 +332,6 @@ ui.NewCheckbox(TAB_MAIN, C_GUARD, "Auto Arrest")
 ui.newSliderFloat(TAB_MAIN, C_GUARD, "Arrest Range", 5.0, 30.0, 12.0)
 ui.NewCheckbox(TAB_MAIN, C_GUARD, "TP Arrest")
 ui.newSliderFloat(TAB_MAIN, C_GUARD, "TP Arrest Range", 50.0, 500.0, 150.0)
-ui.NewCheckbox(TAB_MAIN, C_GUARD, "Safety TP After Arrest")
 ui.NewCheckbox(TAB_MAIN, C_GUARD, "Auto Reload")
 
 -- ============================================
@@ -322,41 +354,16 @@ ui.NewCheckbox(TAB_MAIN, C_MISC, "FPS Boost")
 --  GUARD STATE
 -- ============================================
 
--- Track when a player was successfully arrested (confirmed by them disappearing)
--- Key = player name, value = tick when we last successfully arrested them
-local arrested_players = {}
-local POST_ARREST_CD   = 3000  -- wait 3s before re-targeting same player
+local CLICK_CD      = 250   -- ms between arrest clicks
+local last_click_ms = 0
+local arrest_active = false
+local arrest_status = "READY"
 
--- Click cooldown — fast enough to spam arrests
-local CLICK_CD        = 250
-local last_click_ms   = 0
-
-local arrest_active   = false
-local arrest_status   = "READY"
-local tp_target_name  = nil
-local safety_pending  = false
-local safety_time     = 0
-
--- Check if player was recently arrested (to avoid re-arresting immediately)
-local function recently_arrested(player)
-    local last = arrested_players[player.Name]
-    if not last then return false end
-    return utility.GetTickCount() - last < POST_ARREST_CD
-end
-
--- Mark player as arrested when they stop being visible/alive
-local function check_arrest_success(player_name)
-    -- Player is considered arrested if they're no longer in enemy list
-    local players = entity.GetPlayers(true)
-    for _, p in ipairs(players) do
-        if p.Name == player_name and p.IsAlive then
-            return false -- still alive and enemy, not arrested yet
-        end
-    end
-    -- Not found in alive enemies = arrested or dead
-    arrested_players[player_name] = utility.GetTickCount()
-    return true
-end
+-- TP Arrest target tracking
+-- We lock onto one target and keep going until they're
+-- no longer a valid target (arrested = became inmate, dead, etc)
+local tp_target_name    = nil
+local tp_target_locked  = false  -- true when we've committed to a target
 
 local function find_target(range)
     local hrp = get_hrp()
@@ -365,15 +372,26 @@ local function find_target(range)
     local players = entity.GetPlayers(true)
     local best, best_dist = nil, range
     for _, p in ipairs(players) do
-        if p.IsAlive and not recently_arrested(p) then
-            local valid = is_criminal(p) or inmate_has_weapon(p)
-            if valid then
-                local d = (p.Position - my_pos).Magnitude
-                if d < best_dist then best_dist = d; best = p end
-            end
+        if is_valid_target(p) then
+            local d = (p.Position - my_pos).Magnitude
+            if d < best_dist then best_dist = d; best = p end
         end
     end
     return best
+end
+
+-- Get a specific player from entity list by name
+local function get_player_by_name(name)
+    local players = entity.GetPlayers(true)
+    for _, p in ipairs(players) do
+        if p.Name == name then return p end
+    end
+    -- Also check all players in case team changed
+    local all = entity.GetPlayers(false)
+    for _, p in ipairs(all) do
+        if p.Name == name then return p end
+    end
+    return nil
 end
 
 -- Auto Arrest
@@ -398,7 +416,6 @@ local function run_auto_arrest()
     end
     arrest_active = true
     arrest_status = "LOCKING: " .. best.Name
-
     if now - last_click_ms >= CLICK_CD then
         last_click_ms = now
         local hrp = get_hrp()
@@ -410,24 +427,15 @@ local function run_auto_arrest()
             )
         end
         aim_and_click(best)
-        -- Check if arrest succeeded
-        if check_arrest_success(best.Name) then
-            if ui.getValue(TAB_MAIN, C_GUARD, "Safety TP After Arrest") then
-                safety_pending = true
-                safety_time    = now
-            end
-        end
     end
 end
 
--- TP Arrest — keeps spamming same target until they disappear
--- Only moves to next target after current one is confirmed arrested
-local tp_current_target = nil  -- the actual player object we're chasing
-
+-- TP Arrest — locks onto target and keeps going
+-- Stops ONLY when target is no longer a valid criminal/armed inmate
 local function run_tp_arrest()
     if not ui.getValue(TAB_MAIN, C_GUARD, "TP Arrest") then
-        tp_target_name    = nil
-        tp_current_target = nil
+        tp_target_name   = nil
+        tp_target_locked = false
         return
     end
     if not has_handcuffs() then return end
@@ -438,90 +446,52 @@ local function run_tp_arrest()
     local now   = utility.GetTickCount()
     local range = ui.getValue(TAB_MAIN, C_GUARD, "TP Arrest Range")
 
-    -- If we have a current target, keep going until they're gone
-    -- Only find a new target if we have none or current one is arrested/dead
-    if tp_current_target then
-        -- Check if current target is still alive and available
-        local still_valid = false
-        local players = entity.GetPlayers(true)
-        for _, p in ipairs(players) do
-            if p.Name == tp_current_target and p.IsAlive then
-                still_valid = true
-                break
-            end
-        end
-        if not still_valid then
-            -- Target arrested or dead — mark it and clear
-            arrested_players[tp_current_target] = utility.GetTickCount()
-            tp_current_target = nil
-            tp_target_name    = nil
-            if ui.getValue(TAB_MAIN, C_GUARD, "Safety TP After Arrest") then
-                safety_pending = true
-                safety_time    = now
-            end
+    -- If we have a locked target, check if they're still valid
+    if tp_target_locked and tp_target_name then
+        local target = get_player_by_name(tp_target_name)
+
+        -- Target gone or no longer valid (arrested = became inmate)
+        if not target or not is_valid_target(target) then
+            print("[PLWare] Target arrested or gone: " .. tp_target_name)
+            tp_target_name   = nil
+            tp_target_locked = false
             return
         end
+
+        -- Still valid — keep chasing and arresting
+        local tp  = target.Position
+        local dx  = tp.X - hrp.Position.X
+        local dz  = tp.Z - hrp.Position.Z
+        local mag = math.sqrt(dx*dx + dz*dz)
+
+        if mag > 0.5 then
+            hrp.Position = Vector3.new(
+                tp.X - (dx/mag)*2,
+                tp.Y,
+                tp.Z - (dz/mag)*2
+            )
+        else
+            hrp.Position = Vector3.new(tp.X + 2, tp.Y, tp.Z)
+        end
+
+        if now - last_click_ms >= CLICK_CD then
+            last_click_ms = now
+            aim_and_click(target)
+        end
+
     else
-        -- Find a new target
+        -- No locked target — find the closest valid one
         local best = find_target(range)
         if not best then
-            tp_target_name    = nil
-            tp_current_target = nil
+            tp_target_name   = nil
+            tp_target_locked = false
             return
         end
-        -- New target acquired
-        if tp_target_name ~= best.Name then
-            tp_target_name    = best.Name
-            tp_current_target = best.Name
-            save_pos()
-        end
-    end
-
-    -- Get fresh reference to current target
-    local target_player = nil
-    local players = entity.GetPlayers(true)
-    for _, p in ipairs(players) do
-        if p.Name == tp_current_target and p.IsAlive then
-            target_player = p
-            break
-        end
-    end
-    if not target_player then return end
-
-    -- TP right beside target every click cycle
-    local tp  = target_player.Position
-    local dx  = tp.X - hrp.Position.X
-    local dz  = tp.Z - hrp.Position.Z
-    local mag = math.sqrt(dx*dx + dz*dz)
-
-    if mag > 0.5 then
-        hrp.Position = Vector3.new(
-            tp.X - (dx/mag)*2,
-            tp.Y,
-            tp.Z - (dz/mag)*2
-        )
-    else
-        hrp.Position = Vector3.new(tp.X + 2, tp.Y, tp.Z)
-    end
-
-    -- Spam arrest clicks on same target
-    if now - last_click_ms >= CLICK_CD then
-        last_click_ms = now
-        aim_and_click(target_player)
-    end
-end
-
--- Safety TP: 2s after successful arrest, TP to armory
-local function run_safety_tp()
-    if not safety_pending then return end
-    local now = utility.GetTickCount()
-    if now - safety_time >= 2000 then
-        safety_pending = false
-        local hrp = get_hrp()
-        if hrp then
-            hrp.Position = Vector3.new(816.5, 100.7, 2227.9)
-            print("[PLWare] Safety TP!")
-        end
+        -- Lock onto this target
+        tp_target_name   = best.Name
+        tp_target_locked = true
+        save_pos()
+        print("[PLWare] TP Arrest locked onto: " .. best.Name)
     end
 end
 
@@ -599,8 +569,6 @@ end
 
 -- ============================================
 --  FPS BOOST
---  Safe version using only Lighting service properties
---  that Serotonin actually exposes
 -- ============================================
 
 local fps_on = false
@@ -608,11 +576,8 @@ local fps_on = false
 local function toggle_fps_boost(enable)
     if enable == fps_on then return end
     fps_on = enable
-
-    -- Try each property individually with pcall so one failure doesn't stop others
     local lighting = game.GetService("Lighting")
     if not lighting then return end
-
     if enable then
         pcall(function() lighting.GlobalShadows  = false end)
         pcall(function() lighting.FogEnd         = 100000 end)
@@ -620,10 +585,10 @@ local function toggle_fps_boost(enable)
         pcall(function() lighting.ShadowSoftness = 0      end)
         print("[PLWare] FPS Boost ON")
     else
-        pcall(function() lighting.GlobalShadows  = true   end)
-        pcall(function() lighting.FogEnd         = 1000   end)
-        pcall(function() lighting.FogStart       = 0      end)
-        pcall(function() lighting.ShadowSoftness = 0.2    end)
+        pcall(function() lighting.GlobalShadows  = true  end)
+        pcall(function() lighting.FogEnd         = 1000  end)
+        pcall(function() lighting.FogStart       = 0     end)
+        pcall(function() lighting.ShadowSoftness = 0.2   end)
         print("[PLWare] FPS Boost OFF")
     end
 end
@@ -658,10 +623,6 @@ local function draw_indicators()
         else
             line("TP ARREST: SEARCHING", Color3.fromRGB(100,200,255))
         end
-    end
-
-    if safety_pending then
-        line("SAFETY TP: PENDING...", Color3.fromRGB(150,255,150))
     end
 
     if ui.getValue(TAB_MAIN, C_GUARD, "Auto Reload") then
@@ -706,7 +667,6 @@ cheat.register("onUpdate", function()
     scheduler.run()
     run_auto_arrest()
     run_tp_arrest()
-    run_safety_tp()
     run_auto_reload()
     run_low_health_escape()
     run_anti_arrest()
