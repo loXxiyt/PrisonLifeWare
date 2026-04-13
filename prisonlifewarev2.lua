@@ -85,6 +85,34 @@ local function has_handcuffs()
     return n == "handcuffs" or n == "menottes"
 end
 
+local function has_taser()
+    local char = get_char()
+    if not char then return false end
+    local tool = char:FindFirstChildOfClass("Tool")
+    if not tool then return false end
+    return string.lower(tool.Name) == "taser"
+end
+
+local function get_tool_slot(name_check)
+    -- Returns the keyboard slot number (1-5) for a tool by name
+    local char = get_char()
+    if not char then return nil end
+    local backpack_ok, bp = pcall(function()
+        return game.GetService("Players").LocalPlayer.Backpack
+    end)
+    -- Check character slots 1-5
+    local slots = {"1","2","3","4","5"}
+    for _, slot in ipairs(slots) do
+        keyboard.Click(slot, 10)
+        wait_ms(50)
+        local tool = char:FindFirstChildOfClass("Tool")
+        if tool and string.lower(tool.Name) == string.lower(name_check) then
+            return slot
+        end
+    end
+    return nil
+end
+
 local function is_criminal(player)
     local t = player.Team
     return t and string.find(string.lower(t), "criminal") ~= nil
@@ -104,28 +132,31 @@ local function inmate_has_weapon(player)
     return tool and WEAPON_NAMES[tool.Name] == true
 end
 
-local function aim_and_click(player)
+local function aim_at_player(player)
     local bp = player:GetBonePosition("HumanoidRootPart")
            or player:GetBonePosition("Torso")
            or player.Position
     local sx, sy, vis = utility.WorldToScreen(bp)
     if vis then
         game.SilentAim(sx, sy)
+        return sx, sy, true
+    end
+    return 0, 0, false
+end
+
+local function aim_and_click(player)
+    local sx, sy, vis = aim_at_player(player)
+    if vis then
         mouse.Click("leftmouse")
         return true
     end
     return false
 end
 
--- Check if a player is still a valid arrest target
--- Returns false if they became an inmate (got arrested)
 local function is_valid_target(player)
     if not player.IsAlive then return false end
-    -- Still a criminal = valid
     if is_criminal(player) then return true end
-    -- Inmate with weapon = valid
     if inmate_has_weapon(player) then return true end
-    -- Otherwise they became a regular inmate = skip
     return false
 end
 
@@ -168,7 +199,7 @@ local function cache_items()
                 local dist = cam_pos and (cam_pos - pos).Magnitude or 0
                 if dist <= max_dist then
                     if card_on and CARD_NAMES[obj.Name] then
-                        table.insert(cached_cards, {pos=pos, dist=dist, name=obj.Name, obj=obj})
+                        table.insert(cached_cards, {pos=pos, dist=dist, name=obj.Name})
                     elseif gun_on and GUN_NAMES[obj.Name] then
                         table.insert(cached_guns, {pos=pos, dist=dist, name=obj.Name})
                     end
@@ -232,7 +263,11 @@ ui.NewButton(TAB_MAIN, C_TP, "Teleport", function()
     if not name then return end
     local dest = LOCS[name]
     if dest then
-        hrp.Position = Vector3.new(dest.X, dest.Y, dest.Z)
+        -- Spam position 3 times for reliability
+        for i = 1, 3 do
+            hrp.Position = Vector3.new(dest.X, dest.Y, dest.Z)
+            wait_ms(50)
+        end
         print("[PLWare] Teleported to " .. name)
     end
 end)
@@ -248,11 +283,18 @@ local function save_pos()
     end
 end
 
-local function tp_saved()
+local function tp_to(x, y, z)
     local hrp = get_hrp()
-    if hrp and saved_x then
-        hrp.Position = Vector3.new(saved_x, saved_y, saved_z)
+    if not hrp then return end
+    -- Spam 3x for smooth reliable TP
+    for i = 1, 3 do
+        hrp.Position = Vector3.new(x, y, z)
+        wait_ms(50)
     end
+end
+
+local function tp_saved()
+    if saved_x then tp_to(saved_x, saved_y, saved_z) end
 end
 
 ui.NewButton(TAB_MAIN, C_TP, "Save Position", function()
@@ -272,11 +314,16 @@ ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
         Vector3.new(813.8,Y,Z), Vector3.new(820.3,Y,Z),
         Vector3.new(819.0,Y,Z),
     }
-    for _, p in ipairs(steps) do hrp.Position = p; wait_ms(220) end
+    for _, p in ipairs(steps) do
+        -- Spam each position for reliability
+        for i = 1, 2 do hrp.Position = p; wait_ms(110) end
+    end
     print("[PLWare] Jiggle done! Returning in 1s...")
     wait_ms(1000)
     local h2 = get_hrp()
-    if h2 and saved_x then h2.Position = Vector3.new(saved_x, saved_y, saved_z) end
+    if h2 and saved_x then
+        for i = 1, 3 do h2.Position = Vector3.new(saved_x, saved_y, saved_z); wait_ms(50) end
+    end
 end)
 
 ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
@@ -284,7 +331,7 @@ ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
     else print("[PLWare] No saved position.") end
 end)
 
--- TP to card + press E to pick it up
+-- Key Card: TP onto card and left click directly on it
 ui.NewButton(TAB_MAIN, C_TP, "TP + Grab Key Card", function()
     local hrp = get_hrp()
     if not hrp then return end
@@ -292,34 +339,37 @@ ui.NewButton(TAB_MAIN, C_TP, "TP + Grab Key Card", function()
         print("[PLWare] Enable Card ESP first.")
         return
     end
-
-    -- Find closest card
     local best, bd = nil, math.huge
     for _, c in ipairs(cached_cards) do
         local d = (c.pos - hrp.Position).Magnitude
         if d < bd then bd = d; best = c end
     end
     if not best then return end
-
     save_pos()
 
-    -- TP directly onto the card
-    hrp.Position = Vector3.new(best.pos.X, best.pos.Y + 1, best.pos.Z)
-    wait_ms(200)
-
-    -- Press E multiple times to interact/pick up
-    for i = 1, 5 do
-        keyboard.Click("e", 30)
-        wait_ms(100)
+    -- TP directly onto card (spam for reliability)
+    for i = 1, 3 do
+        hrp.Position = Vector3.new(best.pos.X, best.pos.Y + 1, best.pos.Z)
+        wait_ms(80)
     end
 
-    print(string.format("[PLWare] Attempted card pickup (%.0fm)", bd))
+    -- Left click directly on the card's screen position
+    local sx, sy, on_screen = utility.WorldToScreen(best.pos)
+    if on_screen then
+        for i = 1, 8 do
+            -- Move mouse to card position and click
+            utility.MoveMouse(0, 0) -- reset
+            game.SilentAim(sx, sy)
+            mouse.Click("leftmouse")
+            wait_ms(100)
+        end
+    end
 
-    -- Wait a moment then return
-    wait_ms(400)
+    print(string.format("[PLWare] Attempted card grab (%.0fm)", bd))
+    wait_ms(300)
     local h2 = get_hrp()
     if h2 and saved_x then
-        h2.Position = Vector3.new(saved_x, saved_y, saved_z)
+        for i = 1, 3 do h2.Position = Vector3.new(saved_x, saved_y, saved_z); wait_ms(50) end
         print("[PLWare] Returned after card grab!")
     end
 end)
@@ -332,6 +382,7 @@ ui.NewCheckbox(TAB_MAIN, C_GUARD, "Auto Arrest")
 ui.newSliderFloat(TAB_MAIN, C_GUARD, "Arrest Range", 5.0, 30.0, 12.0)
 ui.NewCheckbox(TAB_MAIN, C_GUARD, "TP Arrest")
 ui.newSliderFloat(TAB_MAIN, C_GUARD, "TP Arrest Range", 50.0, 500.0, 150.0)
+ui.NewCheckbox(TAB_MAIN, C_GUARD, "Tase Before Arrest")
 ui.NewCheckbox(TAB_MAIN, C_GUARD, "Auto Reload")
 
 -- ============================================
@@ -354,16 +405,42 @@ ui.NewCheckbox(TAB_MAIN, C_MISC, "FPS Boost")
 --  GUARD STATE
 -- ============================================
 
-local CLICK_CD      = 250   -- ms between arrest clicks
-local last_click_ms = 0
-local arrest_active = false
-local arrest_status = "READY"
+local CLICK_CD         = 250
+local TP_LOCK_TIMEOUT  = 8000  -- auto reset TP arrest after 8s on same target
+local last_click_ms    = 0
+local arrest_active    = false
+local arrest_status    = "READY"
 
--- TP Arrest target tracking
--- We lock onto one target and keep going until they're
--- no longer a valid target (arrested = became inmate, dead, etc)
-local tp_target_name    = nil
-local tp_target_locked  = false  -- true when we've committed to a target
+-- TP Arrest state
+local tp_target_name   = nil
+local tp_target_locked = false
+local tp_lock_start    = 0    -- when we locked onto current target
+local tp_tased         = {}   -- tracks who we already tased
+
+-- Tase state tracking
+local tase_state       = {}   -- key=player name, val={tased=bool, tase_time=tick}
+local TASE_DURATION    = 3000 -- tase effect lasts ~3s
+
+local function is_tased(player_name)
+    local s = tase_state[player_name]
+    if not s or not s.tased then return false end
+    -- Check if tase has expired
+    if utility.GetTickCount() - s.tase_time > TASE_DURATION then
+        tase_state[player_name] = nil
+        return false
+    end
+    return true
+end
+
+local function mark_tased(player_name)
+    tase_state[player_name] = { tased = true, tase_time = utility.GetTickCount() }
+end
+
+local function reset_tp_arrest()
+    tp_target_name   = nil
+    tp_target_locked = false
+    tp_lock_start    = 0
+end
 
 local function find_target(range)
     local hrp = get_hrp()
@@ -380,13 +457,7 @@ local function find_target(range)
     return best
 end
 
--- Get a specific player from entity list by name
 local function get_player_by_name(name)
-    local players = entity.GetPlayers(true)
-    for _, p in ipairs(players) do
-        if p.Name == name then return p end
-    end
-    -- Also check all players in case team changed
     local all = entity.GetPlayers(false)
     for _, p in ipairs(all) do
         if p.Name == name then return p end
@@ -420,78 +491,134 @@ local function run_auto_arrest()
         last_click_ms = now
         local hrp = get_hrp()
         if hrp then
-            hrp.Position = Vector3.new(
-                best.Position.X,
-                best.Position.Y,
-                best.Position.Z + 2.5
-            )
+            hrp.Position = Vector3.new(best.Position.X, best.Position.Y, best.Position.Z + 2.5)
         end
         aim_and_click(best)
     end
 end
 
--- TP Arrest — locks onto target and keeps going
--- Stops ONLY when target is no longer a valid criminal/armed inmate
+-- TP Arrest with tase support and auto-reset
 local function run_tp_arrest()
     if not ui.getValue(TAB_MAIN, C_GUARD, "TP Arrest") then
-        tp_target_name   = nil
-        tp_target_locked = false
+        reset_tp_arrest()
         return
     end
-    if not has_handcuffs() then return end
+
+    local now = utility.GetTickCount()
+
+    -- Auto-reset if stuck on same target too long
+    if tp_target_locked and now - tp_lock_start > TP_LOCK_TIMEOUT then
+        print("[PLWare] TP Arrest timeout — resetting target")
+        reset_tp_arrest()
+        return
+    end
 
     local hrp = get_hrp()
     if not hrp then return end
 
-    local now   = utility.GetTickCount()
     local range = ui.getValue(TAB_MAIN, C_GUARD, "TP Arrest Range")
+    local tase_first = ui.getValue(TAB_MAIN, C_GUARD, "Tase Before Arrest")
 
-    -- If we have a locked target, check if they're still valid
+    -- Get or find target
+    local target = nil
     if tp_target_locked and tp_target_name then
-        local target = get_player_by_name(tp_target_name)
-
-        -- Target gone or no longer valid (arrested = became inmate)
+        target = get_player_by_name(tp_target_name)
+        -- If target no longer valid (arrested = not criminal anymore)
         if not target or not is_valid_target(target) then
-            print("[PLWare] Target arrested or gone: " .. tp_target_name)
-            tp_target_name   = nil
-            tp_target_locked = false
+            print("[PLWare] Target arrested: " .. (tp_target_name or "?"))
+            reset_tp_arrest()
             return
         end
-
-        -- Still valid — keep chasing and arresting
-        local tp  = target.Position
-        local dx  = tp.X - hrp.Position.X
-        local dz  = tp.Z - hrp.Position.Z
-        local mag = math.sqrt(dx*dx + dz*dz)
-
-        if mag > 0.5 then
-            hrp.Position = Vector3.new(
-                tp.X - (dx/mag)*2,
-                tp.Y,
-                tp.Z - (dz/mag)*2
-            )
-        else
-            hrp.Position = Vector3.new(tp.X + 2, tp.Y, tp.Z)
-        end
-
-        if now - last_click_ms >= CLICK_CD then
-            last_click_ms = now
-            aim_and_click(target)
-        end
-
     else
-        -- No locked target — find the closest valid one
+        -- Find new target
         local best = find_target(range)
         if not best then
-            tp_target_name   = nil
-            tp_target_locked = false
+            reset_tp_arrest()
             return
         end
-        -- Lock onto this target
         tp_target_name   = best.Name
         tp_target_locked = true
+        tp_lock_start    = now
         save_pos()
-        print("[PLWare] TP Arrest locked onto: " .. best.Name)
+        print("[PLWare] TP Arrest locked: " .. best.Name)
+        target = best
+    end
+
+    if not target then return end
+
+    -- TP beside target (spam 2x for smoothness)
+    local tp  = target.Position
+    local dx  = tp.X - hrp.Position.X
+    local dz  = tp.Z - hrp.Position.Z
+    local mag = math.sqrt(dx*dx + dz*dz)
+    local tx, ty, tz
+    if mag > 0.5 then
+        tx = tp.X - (dx/mag)*2
+        ty = tp.Y
+        tz = tp.Z - (dz/mag)*2
+    else
+        tx = tp.X + 2
+        ty = tp.Y
+        tz = tp.Z
+    end
+    hrp.Position = Vector3.new(tx, ty, tz)
+    wait_ms(30)
+    hrp.Position = Vector3.new(tx, ty, tz)
+
+    -- Tase first if enabled and not already tased
+    if tase_first and not is_tased(target.Name) then
+        -- Need taser equipped
+        if has_taser() then
+            local sx, sy, vis = aim_at_player(target)
+            if vis then
+                mouse.Click("leftmouse")
+                mark_tased(target.Name)
+                print("[PLWare] Tased: " .. target.Name)
+                wait_ms(200)
+            end
+        else
+            -- Auto switch to taser slot if we have one
+            -- Try slot 2 and 3 which is usually where taser is
+            local char = get_char()
+            if char then
+                keyboard.Click("2", 10) wait_ms(80)
+                if has_taser() then
+                    local sx, sy, vis = aim_at_player(target)
+                    if vis then
+                        mouse.Click("leftmouse")
+                        mark_tased(target.Name)
+                        print("[PLWare] Tased: " .. target.Name)
+                        wait_ms(200)
+                    end
+                else
+                    keyboard.Click("3", 10) wait_ms(80)
+                    if has_taser() then
+                        local sx, sy, vis = aim_at_player(target)
+                        if vis then
+                            mouse.Click("leftmouse")
+                            mark_tased(target.Name)
+                            print("[PLWare] Tased: " .. target.Name)
+                            wait_ms(200)
+                        end
+                    end
+                end
+                -- Switch back to handcuffs slot 1
+                keyboard.Click("1", 10)
+                wait_ms(80)
+            end
+        end
+        -- If not tased yet don't arrest — wait for tase
+        if not is_tased(target.Name) then return end
+    end
+
+    -- Arrest click
+    if now - last_click_ms >= CLICK_CD then
+        last_click_ms = now
+        if not has_handcuffs() then
+            keyboard.Click("1", 10)
+            wait_ms(80)
+        end
+        aim_and_click(target)
     end
 end
 
@@ -519,8 +646,10 @@ end
 --  INMATE LOGIC
 -- ============================================
 
-local last_escape_ms = 0
-local last_anti_ms   = 0
+local last_escape_ms  = 0
+local last_anti_ms    = 0
+local escape_just_tp  = false  -- suppress anti-arrest after escape TP
+local escape_tp_time  = 0
 
 local function run_low_health_escape()
     if not ui.getValue(TAB_MAIN, C_INMATE, "Low Health Escape") then return end
@@ -538,7 +667,13 @@ local function run_low_health_escape()
             local name = esc_names[idx + 1] or "Criminal Base"
             local dest = esc_locs[name]
             if dest then
-                hrp.Position = Vector3.new(dest.X, dest.Y, dest.Z)
+                -- Mark escape so anti-arrest doesn't immediately TP us back
+                escape_just_tp = true
+                escape_tp_time = now
+                for i = 1, 3 do
+                    hrp.Position = Vector3.new(dest.X, dest.Y, dest.Z)
+                    wait_ms(50)
+                end
                 print("[PLWare] LOW HEALTH! Escaped to " .. name)
             end
         end
@@ -548,6 +683,13 @@ end
 local function run_anti_arrest()
     if not ui.getValue(TAB_MAIN, C_INMATE, "Anti Arrest TP") then return end
     local now = utility.GetTickCount()
+
+    -- Suppress for 4s after a low health escape TP
+    if escape_just_tp then
+        if now - escape_tp_time < 4000 then return end
+        escape_just_tp = false
+    end
+
     if now - last_anti_ms < 2000 then return end
     local hrp = get_hrp()
     if not hrp then return end
@@ -559,7 +701,10 @@ local function run_anti_arrest()
         if p.IsAlive and not is_criminal(p) and lp and p.Name ~= lp.Name then
             if (p.Position - my_pos).Magnitude <= range then
                 last_anti_ms = now
-                hrp.Position = Vector3.new(-974.4, 108.3, 2057.2)
+                for i = 1, 3 do
+                    hrp.Position = Vector3.new(-974.4, 108.3, 2057.2)
+                    wait_ms(50)
+                end
                 print("[PLWare] Guard nearby! Anti-arrest TP!")
                 return
             end
@@ -579,16 +724,16 @@ local function toggle_fps_boost(enable)
     local lighting = game.GetService("Lighting")
     if not lighting then return end
     if enable then
-        pcall(function() lighting.GlobalShadows  = false end)
+        pcall(function() lighting.GlobalShadows  = false  end)
         pcall(function() lighting.FogEnd         = 100000 end)
         pcall(function() lighting.FogStart       = 99999  end)
         pcall(function() lighting.ShadowSoftness = 0      end)
         print("[PLWare] FPS Boost ON")
     else
-        pcall(function() lighting.GlobalShadows  = true  end)
-        pcall(function() lighting.FogEnd         = 1000  end)
-        pcall(function() lighting.FogStart       = 0     end)
-        pcall(function() lighting.ShadowSoftness = 0.2   end)
+        pcall(function() lighting.GlobalShadows  = true   end)
+        pcall(function() lighting.FogEnd         = 1000   end)
+        pcall(function() lighting.FogStart       = 0      end)
+        pcall(function() lighting.ShadowSoftness = 0.2    end)
         print("[PLWare] FPS Boost OFF")
     end
 end
@@ -619,7 +764,17 @@ local function draw_indicators()
 
     if ui.getValue(TAB_MAIN, C_GUARD, "TP Arrest") then
         if tp_target_name then
-            line("TP ARREST: " .. tp_target_name, Color3.fromRGB(255,120,0))
+            -- Show tase status in indicator
+            local tased = is_tased(tp_target_name)
+            local col   = tased and Color3.fromRGB(255,50,50) or Color3.fromRGB(255,200,0)
+            local lbl   = tased
+                and ("TP ARREST: ARRESTING " .. tp_target_name)
+                or  ("TP ARREST: TASING " .. tp_target_name)
+            if not ui.getValue(TAB_MAIN, C_GUARD, "Tase Before Arrest") then
+                lbl = "TP ARREST: " .. tp_target_name
+                col = Color3.fromRGB(255,120,0)
+            end
+            line(lbl, col)
         else
             line("TP ARREST: SEARCHING", Color3.fromRGB(100,200,255))
         end
@@ -645,9 +800,7 @@ local function draw_indicators()
         line("ANTI ARREST: ACTIVE", Color3.fromRGB(200,100,255))
     end
 
-    if fps_on then
-        line("FPS BOOST: ON", Color3.fromRGB(0,200,255))
-    end
+    if fps_on then line("FPS BOOST: ON", Color3.fromRGB(0,200,255)) end
 end
 
 -- ============================================
