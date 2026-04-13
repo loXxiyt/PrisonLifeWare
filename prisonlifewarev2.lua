@@ -35,6 +35,50 @@ local function get_part(obj)
         or obj:FindFirstChildOfClass("Part")
 end
 
+-- Check if local player has handcuffs equipped
+local function has_handcuffs()
+    local char = game.LocalPlayer.Character
+    if not char then return false end
+    local tool = char:FindFirstChildOfClass("Tool")
+    if not tool then return false end
+    local name = string.lower(tool.Name)
+    return name == "handcuffs" or name == "menottes"
+end
+
+-- Check if player is a criminal by team
+local function is_criminal(player)
+    local team = player.Team
+    if not team then return false end
+    local t = string.lower(team)
+    return string.find(t, "criminal") ~= nil
+end
+
+-- Check if player is already cuffed/arrested
+local function is_cuffed(player)
+    if not player.IsAlive then return true end
+    -- Check for cuffed state via character
+    local char = game.LocalPlayer.Character
+    if not char then return false end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    -- If health is 0 or very low they're down
+    if player.Health <= 0 then return true end
+    return false
+end
+
+-- Aim and click at a player
+local function aim_and_click(player)
+    local bone_pos = player:GetBonePosition("HumanoidRootPart")
+                  or player:GetBonePosition("Torso")
+                  or player.Position
+    local sx, sy, on_screen = utility.WorldToScreen(bone_pos)
+    if on_screen then
+        game.SilentAim(sx, sy)
+        mouse.Click("leftmouse")
+        return true
+    end
+    return false
+end
+
 -- ============================================
 --  ITEM ESP
 -- ============================================
@@ -95,9 +139,9 @@ local function cache_items()
                 local dist = cam_pos and (cam_pos - pos).Magnitude or 0
                 if dist <= max_dist then
                     if card_on and CARD_NAMES[obj.Name] then
-                        table.insert(cached_cards, { pos = pos, dist = dist, name = obj.Name, part = part })
+                        table.insert(cached_cards, { pos = pos, dist = dist, name = obj.Name })
                     elseif gun_on and GUN_NAMES[obj.Name] then
-                        table.insert(cached_guns, { pos = pos, dist = dist, name = obj.Name, part = part })
+                        table.insert(cached_guns, { pos = pos, dist = dist, name = obj.Name })
                     end
                 end
             end
@@ -145,8 +189,6 @@ end
 --  TELEPORTS
 -- ============================================
 
--- IMPORTANT: Serotonin dropdown is 0-indexed
--- location_names[1] = index 0, location_names[2] = index 1, etc.
 local location_names = {
     "Armory",
     "Criminal Base",
@@ -156,13 +198,14 @@ local location_names = {
     "Outside Gate",
 }
 
+-- All coords confirmed in-game
 local LOCATIONS = {
-    ["Armory"]        = Vector3.new(816.7,  100.7, 2227.8),
+    ["Armory"]        = Vector3.new(816.5,  100.7, 2227.9),
     ["Criminal Base"] = Vector3.new(-974.4, 108.3, 2057.2),
-    ["Prison Yard"]   = Vector3.new(50,     5,     0),
-    ["Cells"]         = Vector3.new(135,    5,     40),
-    ["Cafeteria"]     = Vector3.new(100,    5,    -50),
-    ["Outside Gate"]  = Vector3.new(0,      5,     80),
+    ["Prison Yard"]   = Vector3.new(807.9,  98.0,  2484.0),
+    ["Cells"]         = Vector3.new(918.8,  100.0, 2484.5),
+    ["Cafeteria"]     = Vector3.new(919.1,  100.0, 2227.9),
+    ["Outside Gate"]  = Vector3.new(491.4,  95.5,  2052.5),
 }
 
 ui.NewDropdown(TAB_MAIN, C_TP, "Location", location_names, 1)
@@ -171,14 +214,9 @@ ui.NewButton(TAB_MAIN, C_TP, "Teleport", function()
     local hrp = get_hrp()
     if not hrp then print("[PLWare] No character.") return end
 
-    -- Dropdown is 0-indexed so add 1 to get Lua table index
     local raw_index = ui.getValue(TAB_MAIN, C_TP, "Location")
     local name = location_names[raw_index + 1]
-
-    if not name then
-        print("[PLWare] Invalid location index:", raw_index)
-        return
-    end
+    if not name then return end
 
     local dest = LOCATIONS[name]
     if dest then
@@ -208,9 +246,8 @@ ui.NewButton(TAB_MAIN, C_TP, "Grab Gun (TP + Jiggle)", function()
     saved_z = hrp.Position.Z
 
     local Y = 100.7
-    local Z = 2227.8
+    local Z = 2227.9
 
-    -- Sweep across both confirmed pads
     hrp.Position = Vector3.new(817.0, Y, Z)
     wait_ms(200)
     hrp.Position = Vector3.new(820.3, Y, Z)
@@ -243,7 +280,6 @@ ui.NewButton(TAB_MAIN, C_TP, "Return to Saved", function()
     end
 end)
 
--- TP to nearest dropped keycard
 ui.NewButton(TAB_MAIN, C_TP, "TP to Key Card", function()
     local hrp = get_hrp()
     if not hrp then return end
@@ -253,10 +289,9 @@ ui.NewButton(TAB_MAIN, C_TP, "TP to Key Card", function()
         return
     end
 
-    -- Find closest cached card
-    local best     = nil
+    local best      = nil
     local best_dist = math.huge
-    local my_pos   = hrp.Position
+    local my_pos    = hrp.Position
 
     for _, card in ipairs(cached_cards) do
         local dist = (card.pos - my_pos).Magnitude
@@ -276,58 +311,37 @@ ui.NewButton(TAB_MAIN, C_TP, "TP to Key Card", function()
 end)
 
 -- ============================================
---  MISC
+--  MISC - PREMIUM ARREST SYSTEM
 -- ============================================
 
--- Auto Arrest (criminals only)
 ui.NewCheckbox(TAB_MAIN, C_MISC, "Auto Arrest")
 ui.newSliderFloat(TAB_MAIN, C_MISC, "Arrest Range", 5.0, 30.0, 12.0)
-
--- Auto TP + Arrest (tp to criminal then arrest)
 ui.NewCheckbox(TAB_MAIN, C_MISC, "TP Arrest")
 ui.newSliderFloat(TAB_MAIN, C_MISC, "TP Arrest Range", 50.0, 500.0, 150.0)
 
+-- ── State tracking ──────────────────────────
 local auto_arrest_active  = false
-local tp_arrest_cooldown  = 0
+local auto_arrest_status  = "READY"  -- READY / LOCKING / NO HANDCUFFS / NO TARGET
+local last_arrest_click   = 0
+local last_tp_arrest      = 0
+local tp_arrest_target    = nil  -- track current TP arrest target
 
-local function is_criminal(player)
-    -- Only target criminals, not officers or inmates
-    local team = player.Team
-    if not team then return false end
-    local t = string.lower(team)
-    return t == "criminal" or t == "criminals"
-end
+-- Arrest click cooldown — Prison Life handcuff animation is ~800ms
+-- We click every 300ms which is fast enough without being too spammy
+local ARREST_CLICK_CD = 300
 
-local function do_arrest(player)
-    local bone_pos = player:GetBonePosition("HumanoidRootPart")
-                  or player:GetBonePosition("Torso")
-                  or player.Position
-    local sx, sy, on_screen = utility.WorldToScreen(bone_pos)
-    if on_screen then
-        game.SilentAim(sx, sy)
-        mouse.Click("leftmouse")
-        return true
-    end
-    return false
-end
-
-local function auto_arrest()
-    if not ui.getValue(TAB_MAIN, C_MISC, "Auto Arrest") then
-        auto_arrest_active = false
-        return
-    end
-
+-- ── Find best criminal target ────────────────
+local function find_best_criminal(max_range)
     local hrp = get_hrp()
-    if not hrp then return end
+    if not hrp then return nil end
 
-    local range     = ui.getValue(TAB_MAIN, C_MISC, "Arrest Range")
     local my_pos    = hrp.Position
     local players   = entity.GetPlayers(true)
     local best      = nil
-    local best_dist = range
+    local best_dist = max_range
 
     for _, player in ipairs(players) do
-        if player.IsAlive and is_criminal(player) then
+        if player.IsAlive and is_criminal(player) and not is_cuffed(player) then
             local dist = (player.Position - my_pos).Magnitude
             if dist < best_dist then
                 best_dist = dist
@@ -336,55 +350,99 @@ local function auto_arrest()
         end
     end
 
-    if best then
-        auto_arrest_active = true
-        do_arrest(best)
-    else
+    return best
+end
+
+-- ── Auto Arrest ──────────────────────────────
+local function auto_arrest()
+    if not ui.getValue(TAB_MAIN, C_MISC, "Auto Arrest") then
         auto_arrest_active = false
+        auto_arrest_status = "OFF"
+        return
+    end
+
+    -- Must have handcuffs equipped
+    if not has_handcuffs() then
+        auto_arrest_active = false
+        auto_arrest_status = "NO HANDCUFFS"
+        return
+    end
+
+    local now   = utility.GetTickCount()
+    local range = ui.getValue(TAB_MAIN, C_MISC, "Arrest Range")
+    local best  = find_best_criminal(range)
+
+    if not best then
+        auto_arrest_active = false
+        auto_arrest_status = "NO TARGET"
+        return
+    end
+
+    auto_arrest_active = true
+    auto_arrest_status = "LOCKING: " .. best.Name
+
+    -- Only click at the arrest cooldown rate
+    if now - last_arrest_click >= ARREST_CLICK_CD then
+        last_arrest_click = now
+        aim_and_click(best)
     end
 end
 
+-- ── TP Arrest ────────────────────────────────
 local function tp_arrest()
-    if not ui.getValue(TAB_MAIN, C_MISC, "TP Arrest") then return end
-
-    local now = utility.GetTickCount()
-    if now - tp_arrest_cooldown < 3000 then return end -- 3s cooldown
-
-    local hrp = get_hrp()
-    if not hrp then return end
-
-    local range   = ui.getValue(TAB_MAIN, C_MISC, "TP Arrest Range")
-    local my_pos  = hrp.Position
-    local players = entity.GetPlayers(true)
-    local best    = nil
-    local best_dist = range
-
-    for _, player in ipairs(players) do
-        if player.IsAlive and is_criminal(player) then
-            local dist = (player.Position - my_pos).Magnitude
-            if dist < best_dist then
-                best_dist = dist
-                best      = player
-            end
-        end
+    if not ui.getValue(TAB_MAIN, C_MISC, "TP Arrest") then
+        tp_arrest_target = nil
+        return
     end
 
-    if best then
-        tp_arrest_cooldown = now
+    if not has_handcuffs() then return end
 
-        -- Save position
+    local now   = utility.GetTickCount()
+    local hrp   = get_hrp()
+    if not hrp then return end
+
+    local range = ui.getValue(TAB_MAIN, C_MISC, "TP Arrest Range")
+    local best  = find_best_criminal(range)
+
+    if not best then
+        tp_arrest_target = nil
+        return
+    end
+
+    -- New target or target changed
+    if tp_arrest_target ~= best.Name then
+        tp_arrest_target = best.Name
+
+        -- Save position before TPing
         saved_x = hrp.Position.X
         saved_y = hrp.Position.Y
         saved_z = hrp.Position.Z
+    end
 
-        -- TP directly behind the criminal
-        local target_pos = best.Position
+    -- TP slightly behind the criminal so we're in arrest range
+    -- but not clipping inside them
+    local target_pos = best.Position
+    local offset = 2.5
+
+    -- Calculate position slightly behind target relative to us
+    local dir = (target_pos - hrp.Position)
+    local mag = dir.Magnitude
+    if mag > 0 then
+        local nx = dir.X / mag
+        local nz = dir.Z / mag
+        hrp.Position = Vector3.new(
+            target_pos.X - nx * offset,
+            target_pos.Y,
+            target_pos.Z - nz * offset
+        )
+    else
         hrp.Position = Vector3.new(target_pos.X, target_pos.Y, target_pos.Z)
-        wait_ms(100)
+    end
 
-        -- Arrest them
-        do_arrest(best)
-        print("[PLWare] TP Arrested: " .. best.Name)
+    -- Click to arrest at proper cooldown
+    if now - last_arrest_click >= ARREST_CLICK_CD then
+        last_arrest_click = now
+        aim_and_click(best)
     end
 end
 
@@ -393,23 +451,38 @@ end
 -- ============================================
 
 local function draw_indicators()
-    local y = 30
-    local screen_w = 1920
+    local sw, sh = cheat.getWindowSize()
+    local cx = sw / 2
+    local y  = 30
 
-    if ui.getValue(TAB_MAIN, C_MISC, "Auto Arrest") then
-        local color = auto_arrest_active
-            and Color3.fromRGB(255, 50,  50)
-            or  Color3.fromRGB(100, 255, 100)
-        local label = auto_arrest_active and "AUTO ARREST: LOCKING" or "AUTO ARREST: READY"
+    local function draw_status(label, color)
         local tw, _ = draw.GetTextSize(label, "Verdana")
-        draw.TextOutlined(label, (screen_w / 2) - (tw / 2), y, color, "Verdana")
-        y = y + 18
+        draw.TextOutlined(label, cx - (tw / 2), y, color, "Verdana")
+        y = y + 20
     end
 
+    -- Auto Arrest indicator
+    if ui.getValue(TAB_MAIN, C_MISC, "Auto Arrest") then
+        if auto_arrest_status == "NO HANDCUFFS" then
+            draw_status("AUTO ARREST: EQUIP HANDCUFFS", Color3.fromRGB(255, 200, 0))
+        elseif auto_arrest_status == "NO TARGET" then
+            draw_status("AUTO ARREST: NO CRIMINAL IN RANGE", Color3.fromRGB(100, 255, 100))
+        elseif auto_arrest_active then
+            draw_status("AUTO ARREST: " .. auto_arrest_status, Color3.fromRGB(255, 50, 50))
+        else
+            draw_status("AUTO ARREST: READY", Color3.fromRGB(100, 255, 100))
+        end
+    end
+
+    -- TP Arrest indicator
     if ui.getValue(TAB_MAIN, C_MISC, "TP Arrest") then
-        local label = "TP ARREST: ON"
-        local tw, _ = draw.GetTextSize(label, "Verdana")
-        draw.TextOutlined(label, (screen_w / 2) - (tw / 2), y, Color3.fromRGB(255, 200, 0), "Verdana")
+        if not has_handcuffs() then
+            draw_status("TP ARREST: EQUIP HANDCUFFS", Color3.fromRGB(255, 200, 0))
+        elseif tp_arrest_target then
+            draw_status("TP ARREST: CHASING " .. tp_arrest_target, Color3.fromRGB(255, 100, 0))
+        else
+            draw_status("TP ARREST: SEARCHING...", Color3.fromRGB(100, 200, 255))
+        end
     end
 end
 
