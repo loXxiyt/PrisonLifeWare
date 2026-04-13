@@ -343,7 +343,6 @@ ui.newSliderFloat(T, CI, "Guard Range", 5.0, 20.0, 8.0)
 
 ui.NewCheckbox(T, CM, "FPS Boost")
 ui.NewCheckbox(T, CM, "Panic Button")
-ui.NewHotkey(T, CM)
 
 -- ══════════════════════════════════════════════
 --  GUARD STATE
@@ -544,15 +543,7 @@ end
 
 -- ══════════════════════════════════════════════
 --  PANIC BUTTON
---  Instantly TPs to armory when hotkey pressed
 -- ══════════════════════════════════════════════
-
-local function run_panic()
-    if not ui.getValue(T, CM, "Panic Button") then return end
-    local hk = ui.GetHotkey(T, CM, "Panic Button")
-    -- Panic: TP to armory instantly
-    -- (hotkey handled via ui.GetHotkey — trigger manually via button too)
-end
 
 ui.NewButton(T, CM, "Panic TP Now", function()
     tp(816.5, 100.7, 2227.9)
