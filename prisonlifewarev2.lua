@@ -1,38 +1,42 @@
 -- ╔══════════════════════════════════════════╗
---   PrisonLifeWare v2.5  |  loXxiyt
+--   PrisonLifeWare v3.0  |  loXxiyt
 --   github.com/loXxiyt/PrisonLifeWare
 -- ╚══════════════════════════════════════════╝
 
-local PLW_VERSION = "v2.5"
+local PLW_VERSION = "v3.0"
 
-local T  = "PLWare"
-local CE = "ESP"
-local CT = "TPS"
-local CG = "GUARD"
-local CI = "INMATE"
-local CM = "MISC"
+local T   = "PLWare"
+local CE  = "ESP"
+local CT  = "TPS"
+local CG  = "GUARD"
+local CI  = "INMATE"
+local CX  = "EXPLOITS"   -- Serotonin integration
+local CM  = "MISC"
+
+-- Serotonin tab/container refs
+local EX_TAB  = "Exploits"
+local EX_MAIN = "Main"
+local EX_MISC = "Misc"
 
 ui.newTab(T, "PrisonLifeWare")
-ui.NewContainer(T, CE, "Item ESP",  { autosize = true, next = true })
-ui.NewContainer(T, CT, "Teleports", { autosize = true, next = true })
-ui.NewContainer(T, CG, "Guard",     { autosize = true, next = true })
-ui.NewContainer(T, CI, "Inmate",    { autosize = true, next = true })
-ui.NewContainer(T, CM, "Misc",      { autosize = true })
+ui.NewContainer(T, CE,  "Item ESP",      { autosize = true, next = true })
+ui.NewContainer(T, CT,  "Teleports",     { autosize = true, next = true })
+ui.NewContainer(T, CG,  "Guard",         { autosize = true, next = true })
+ui.NewContainer(T, CI,  "Inmate",        { autosize = true, next = true })
+ui.NewContainer(T, CX,  "Sero Exploits", { autosize = true, next = true })
+ui.NewContainer(T, CM,  "Misc",          { autosize = true })
 
 -- ══════════════════════════════════════════════
 --  SCHEDULER
 -- ══════════════════════════════════════════════
 
 local sched = { tasks = {}, ivs = {} }
-
 function sched.after(ms, fn)
     table.insert(sched.tasks, { t = utility.GetTickCount() + ms, fn = fn })
 end
-
 function sched.every(ms, fn)
     table.insert(sched.ivs, { d = ms, last = utility.GetTickCount(), fn = fn })
 end
-
 function sched.tick()
     local now = utility.GetTickCount()
     for i = #sched.tasks, 1, -1 do
@@ -125,12 +129,23 @@ local function click(p)
     return false
 end
 
--- Check if a player has handcuffs (actual arrest threat)
 local function has_cuffs(p)
     local c = game.Workspace:FindFirstChild(p.Name); if not c then return false end
     local t = c:FindFirstChildOfClass("Tool"); if not t then return false end
     local n = string.lower(t.Name)
     return n == "handcuffs" or n == "menottes"
+end
+
+-- Serotonin exploit read/write helpers
+local function sero_get(container, name)
+    local ok, v = pcall(function()
+        return ui.getValue(EX_TAB, container, name)
+    end)
+    return ok and v or nil
+end
+
+local function sero_set(container, name, val)
+    pcall(function() ui.setValue(EX_TAB, container, name, val) end)
 end
 
 -- ══════════════════════════════════════════════
@@ -196,22 +211,22 @@ local function draw_esp()
         local hw = 14
         draw.Rect(sx-hw, sy-hw, hw*2, hw*2, col, 1.0)
         local k = 4
-        draw.Line(sx-hw,   sy-hw,   sx-hw+k, sy-hw,   col, 2)
-        draw.Line(sx-hw,   sy-hw,   sx-hw,   sy-hw+k, col, 2)
-        draw.Line(sx+hw,   sy-hw,   sx+hw-k, sy-hw,   col, 2)
-        draw.Line(sx+hw,   sy-hw,   sx+hw,   sy-hw+k, col, 2)
-        draw.Line(sx-hw,   sy+hw,   sx-hw+k, sy+hw,   col, 2)
-        draw.Line(sx-hw,   sy+hw,   sx-hw,   sy+hw-k, col, 2)
-        draw.Line(sx+hw,   sy+hw,   sx+hw-k, sy+hw,   col, 2)
-        draw.Line(sx+hw,   sy+hw,   sx+hw,   sy+hw-k, col, 2)
+        draw.Line(sx-hw, sy-hw, sx-hw+k, sy-hw,   col, 2)
+        draw.Line(sx-hw, sy-hw, sx-hw,   sy-hw+k, col, 2)
+        draw.Line(sx+hw, sy-hw, sx+hw-k, sy-hw,   col, 2)
+        draw.Line(sx+hw, sy-hw, sx+hw,   sy-hw+k, col, 2)
+        draw.Line(sx-hw, sy+hw, sx-hw+k, sy+hw,   col, 2)
+        draw.Line(sx-hw, sy+hw, sx-hw,   sy+hw-k, col, 2)
+        draw.Line(sx+hw, sy+hw, sx+hw-k, sy+hw,   col, 2)
+        draw.Line(sx+hw, sy+hw, sx+hw,   sy+hw-k, col, 2)
         local tw, th = draw.GetTextSize(label, "ConsolasBold")
         draw.TextOutlined(label, sx-(tw/2), sy-hw-th-3, col, "ConsolasBold")
         local ds = string.format("%.0fm", e.dist)
         local dw, _ = draw.GetTextSize(ds, "ConsolasBold")
         draw.TextOutlined(ds, sx-(dw/2), sy+hw+3, Color3.fromRGB(160,160,160), "ConsolasBold")
     end
-    if c_on then for _, e in pairs(esp_cards) do render(e, "CARD",   cc3) end end
-    if g_on then for _, e in pairs(esp_guns)  do render(e, e.name,  gc3) end end
+    if c_on then for _, e in pairs(esp_cards) do render(e, "CARD",  cc3) end end
+    if g_on then for _, e in pairs(esp_guns)  do render(e, e.name, gc3) end end
 end
 
 -- ══════════════════════════════════════════════
@@ -268,8 +283,7 @@ ui.NewButton(T, CT, "Grab Gun", function()
         h.Position = Vector3.new(px, Y, Z); wait_ms(100)
     end
     print("[PLWare] Done — returning...")
-    wait_ms(1000)
-    ret()
+    wait_ms(1000); ret()
 end)
 
 ui.NewButton(T, CT, "Return", function()
@@ -300,8 +314,7 @@ ui.NewButton(T, CT, "Grab Key Card", function()
         end
     end
     print(string.format("[PLWare] Card grabbed (%.0fm)", bd))
-    wait_ms(300)
-    ret()
+    wait_ms(300); ret()
 end)
 
 -- ══════════════════════════════════════════════
@@ -329,6 +342,43 @@ ui.NewCheckbox(T, CI, "Ghost Jitter")
 ui.NewCheckbox(T, CI, "Auto Sprint")
 
 -- ══════════════════════════════════════════════
+--  SEROTONIN EXPLOITS UI
+--  Direct integration with built-in Sero features
+-- ══════════════════════════════════════════════
+
+-- Movement
+ui.NewCheckbox(T, CX, "Speed Hack")
+ui.newSliderInt(T, CX, "Walk Speed", 16, 500, 50)
+ui.NewCheckbox(T, CX, "Fly")
+ui.NewCheckbox(T, CX, "Noclip")
+ui.NewCheckbox(T, CX, "Infinite Jump")
+ui.NewCheckbox(T, CX, "Bunnyhop")
+ui.NewCheckbox(T, CX, "Jetpack")
+ui.newSliderFloat(T, CX, "Jetpack Force", 1.0, 100.0, 10.0)
+-- Combat/Utility
+ui.NewCheckbox(T, CX, "Anti-Aim")
+ui.NewCheckbox(T, CX, "No Jump Cooldown")
+ui.NewCheckbox(T, CX, "Underground")
+ui.NewCheckbox(T, CX, "Slow Fall")
+ui.NewCheckbox(T, CX, "Anti AFK")
+-- Reset button
+ui.NewButton(T, CX, "Reset All Exploits", function()
+    sero_set(EX_MAIN, "Speed",           false)
+    sero_set(EX_MAIN, "Walkspeed",       false)
+    sero_set(EX_MAIN, "Fly",             false)
+    sero_set(EX_MAIN, "Infinite Jump",   false)
+    sero_set(EX_MAIN, "Bunnyhop",        false)
+    sero_set(EX_MAIN, "Anti Afk",        false)
+    sero_set(EX_MISC, "Noclip",          false)
+    sero_set(EX_MISC, "Jetpack",         false)
+    sero_set(EX_MISC, "Enable Anti-Aim", false)
+    sero_set(EX_MISC, "No Jump Cooldown",false)
+    sero_set(EX_MISC, "Underground",     false)
+    sero_set(EX_MISC, "Slow Fall",       false)
+    print("[PLWare] All exploits reset.")
+end)
+
+-- ══════════════════════════════════════════════
 --  MISC UI
 -- ══════════════════════════════════════════════
 
@@ -339,21 +389,77 @@ ui.NewButton(T, CM, "Panic TP Now", function()
 end)
 
 -- ══════════════════════════════════════════════
+--  SEROTONIN EXPLOIT SYNC
+--  Mirrors our checkboxes to Serotonin's built-in
+--  exploit states every update tick
+-- ══════════════════════════════════════════════
+
+-- Track previous states so we only write on change
+local ex_prev = {}
+
+local function sync_exploits()
+    local function sync_bool(our_name, sero_cont, sero_name)
+        local want = ui.getValue(T, CX, our_name)
+        if want ~= ex_prev[our_name] then
+            ex_prev[our_name] = want
+            sero_set(sero_cont, sero_name, want)
+        end
+    end
+
+    local function sync_val(our_name, sero_cont, sero_name)
+        local want = ui.getValue(T, CX, our_name)
+        if want ~= ex_prev[our_name] then
+            ex_prev[our_name] = want
+            sero_set(sero_cont, sero_name, want)
+        end
+    end
+
+    -- Speed hack: toggle Speed on/off + write walkspeed value
+    local sp_on  = ui.getValue(T, CX, "Speed Hack")
+    local sp_val = ui.getValue(T, CX, "Walk Speed")
+    if sp_on ~= ex_prev["Speed Hack"] or sp_val ~= ex_prev["Walk Speed"] then
+        ex_prev["Speed Hack"] = sp_on
+        ex_prev["Walk Speed"] = sp_val
+        sero_set(EX_MAIN, "Speed",     sp_on)
+        sero_set(EX_MAIN, "Walkspeed", sp_on)
+        if sp_on then
+            sero_set(EX_MAIN, "Walkspeed", sp_val)
+        end
+    end
+
+    sync_bool("Fly",              EX_MAIN, "Fly")
+    sync_bool("Infinite Jump",    EX_MAIN, "Infinite Jump")
+    sync_bool("Bunnyhop",         EX_MAIN, "Bunnyhop")
+    sync_bool("Anti AFK",         EX_MAIN, "Anti Afk")
+    sync_bool("Noclip",           EX_MISC, "Noclip")
+    sync_bool("Anti-Aim",         EX_MISC, "Enable Anti-Aim")
+    sync_bool("No Jump Cooldown", EX_MISC, "No Jump Cooldown")
+    sync_bool("Underground",      EX_MISC, "Underground")
+    sync_bool("Slow Fall",        EX_MISC, "Slow Fall")
+
+    -- Jetpack with force value
+    local jp_on  = ui.getValue(T, CX, "Jetpack")
+    local jp_val = ui.getValue(T, CX, "Jetpack Force")
+    if jp_on ~= ex_prev["Jetpack"] or jp_val ~= ex_prev["Jetpack Force"] then
+        ex_prev["Jetpack"]       = jp_on
+        ex_prev["Jetpack Force"] = jp_val
+        sero_set(EX_MISC, "Jetpack",       jp_on)
+        sero_set(EX_MISC, "Jetpack Force", jp_val)
+    end
+end
+
+-- ══════════════════════════════════════════════
 --  GUARD STATE
 -- ══════════════════════════════════════════════
 
-local CLICK_CD   = 250
--- TP Arrest cycle: active for 3s then resets itself
--- This prevents the "frozen" state where it stops working
-local TP_CYCLE   = 3000   -- arrest for 3s then reset and re-lock
+local CLICK_CD  = 250
+local TP_CYCLE  = 3000
 local last_click = 0
 local arr_active = false
 local arr_status = "READY"
-
--- TP Arrest state
 local tp_name    = nil
 local tp_locked  = false
-local tp_start   = 0      -- when current lock started
+local tp_start   = 0
 local last_alert = 0
 
 local function reset_tp()
@@ -382,7 +488,6 @@ local function get_by_name(name)
     return nil
 end
 
--- ── Auto Arrest ───────────────────────────────
 local function run_auto_arrest()
     if not ui.getValue(T, CG, "Auto Arrest") then
         arr_active = false; arr_status = "OFF"; return
@@ -400,45 +505,30 @@ local function run_auto_arrest()
     if n - last_click >= CLICK_CD then
         last_click = n
         local h = hrp()
-        if h then
-            h.Position = Vector3.new(t.Position.X, t.Position.Y, t.Position.Z+2.5)
-        end
+        if h then h.Position = Vector3.new(t.Position.X, t.Position.Y, t.Position.Z+2.5) end
         click(t)
     end
 end
 
--- ── TP Arrest with forced cycle reset ─────────
--- Every TP_CYCLE ms it resets the lock completely
--- then immediately re-acquires — this forces a fresh
--- aim + position cycle which fixes the "frozen" state
 local function run_tp_arrest()
-    if not ui.getValue(T, CG, "TP Arrest") then
-        reset_tp(); return
-    end
+    if not ui.getValue(T, CG, "TP Arrest") then reset_tp(); return end
     if not cuffs() then return end
-
     local n = now()
     local h = hrp(); if not h then return end
 
-    -- FORCED CYCLE RESET every TP_CYCLE ms
-    -- This is the fix for the frozen arrest issue
     if tp_locked and n - tp_start >= TP_CYCLE then
-        reset_tp()  -- wipe state completely
-        return       -- skip this frame, re-acquire next frame
+        reset_tp(); return
     end
 
-    -- Find or validate target
     local target = nil
     if tp_locked and tp_name then
         local p = get_by_name(tp_name)
-        -- Target gone or no longer valid = arrested
         if not p or not valid_target(p) then
             print("[PLWare] Arrested: " .. (tp_name or "?"))
             reset_tp(); return
         end
         target = p
     else
-        -- Acquire new target
         local best = find_target(ui.getValue(T, CG, "TP Range"))
         if not best then reset_tp(); return end
         tp_name   = best.Name
@@ -448,10 +538,8 @@ local function run_tp_arrest()
         print("[PLWare] Target: " .. best.Name)
         target = best
     end
-
     if not target then return end
 
-    -- TP beside target
     local pos = target.Position
     local dx  = pos.X - h.Position.X
     local dz  = pos.Z - h.Position.Z
@@ -464,14 +552,11 @@ local function run_tp_arrest()
         h.Position = Vector3.new(pos.X+2, pos.Y, pos.Z)
     end
 
-    -- Click at arrest CD
     if n - last_click >= CLICK_CD then
-        last_click = n
-        click(target)
+        last_click = n; click(target)
     end
 end
 
--- ── Proximity Alert ───────────────────────────
 local function run_proximity_alert()
     if not ui.getValue(T, CG, "Proximity Alert") then return end
     local n = now(); if n - last_alert < 2500 then return end
@@ -480,63 +565,49 @@ local function run_proximity_alert()
     for _, p in ipairs(entity.GetPlayers(true)) do
         if valid_target(p) and (p.Position - h.Position).Magnitude <= range then
             last_alert = n
-            audio.beep(880, 120)
-            wait_ms(70)
-            audio.beep(1200, 80)
+            audio.beep(880, 120); wait_ms(70); audio.beep(1200, 80)
             return
         end
     end
 end
 
 -- ══════════════════════════════════════════════
---  INMATE FEATURES
+--  INMATE LOGIC
 -- ══════════════════════════════════════════════
 
-local last_esc     = 0
-local last_detect  = 0
-local just_esc     = false
-local esc_time     = 0
-local ghost_timer  = 0
-local ghost_dir    = 1
+local last_esc    = 0
+local last_detect = 0
+local just_esc    = false
+local esc_time    = 0
+local ghost_timer = 0
+local ghost_dir   = 1
+local sprint_on   = false
 
--- ── Escape on Low HP ─────────────────────────
--- Checks every 500ms, aggressive TP with 5 attempts
 local function run_escape()
     if not ui.getValue(T, CI, "Escape on Low HP") then return end
     local n = now(); if n - last_esc < 500 then return end
     last_esc = n
     local p = lp(); if not p or p.MaxHealth <= 0 then return end
     local thresh = ui.getValue(T, CI, "HP %")
-    local hp_pct = (p.Health / p.MaxHealth) * 100
-    if hp_pct <= thresh then
-        -- Set cooldown longer to avoid spam
-        last_esc  = n + 3000
-        just_esc  = true
-        esc_time  = n
+    if (p.Health / p.MaxHealth * 100) <= thresh then
+        last_esc = n + 3000
+        just_esc = true; esc_time = n
         local idx  = ui.getValue(T, CI, "Escape To")
         local name = ESC_NAMES[idx+1] or "Criminal Base"
         local d    = ESC_LOCS[name]
         if d then
-            -- 5 aggressive TPs to make sure it lands
             local h = hrp()
             if h then
-                for i = 1, 5 do
-                    h.Position = Vector3.new(d[1], d[2], d[3])
-                    wait_ms(60)
-                end
+                for i = 1, 5 do h.Position = Vector3.new(d[1],d[2],d[3]); wait_ms(60) end
             end
-            print("[PLWare] ESCAPE → " .. name .. " (" .. math.floor(hp_pct) .. "%)")
+            print("[PLWare] ESCAPE → " .. name)
         end
     end
 end
 
--- ── Guard Detector ────────────────────────────
--- Detects guards with handcuffs specifically
--- Much more reliable than generic team check
 local function run_guard_detector()
     if not ui.getValue(T, CI, "Guard Detector") then return end
     local n = now()
-    -- Suppress for 5s after escape TP
     if just_esc and n - esc_time < 5000 then return end
     just_esc = false
     if n - last_detect < 1500 then return end
@@ -546,9 +617,7 @@ local function run_guard_detector()
     local me    = lp()
     for _, p in ipairs(entity.GetPlayers()) do
         if p.IsAlive and me and p.Name ~= me.Name then
-            local dist = (p.Position - mp).Magnitude
-            if dist <= range and has_cuffs(p) then
-                -- Guard with cuffs nearby = real threat
+            if (p.Position - mp).Magnitude <= range and has_cuffs(p) then
                 last_detect = n
                 local idx  = ui.getValue(T, CI, "Escape To")
                 local name = ESC_NAMES[idx+1] or "Criminal Base"
@@ -556,10 +625,7 @@ local function run_guard_detector()
                 if d then
                     local hh = hrp()
                     if hh then
-                        for i = 1, 4 do
-                            hh.Position = Vector3.new(d[1], d[2], d[3])
-                            wait_ms(50)
-                        end
+                        for i = 1, 4 do hh.Position = Vector3.new(d[1],d[2],d[3]); wait_ms(50) end
                         print("[PLWare] Guard w/ cuffs! → " .. name)
                     end
                 end
@@ -569,38 +635,22 @@ local function run_guard_detector()
     end
 end
 
--- ── Ghost Jitter ─────────────────────────────
--- Rapidly microshifts your position making it
--- very hard for guards to get a clean arrest click
--- Subtle enough that it looks like network lag
 local function run_ghost_jitter(dt)
     if not ui.getValue(T, CI, "Ghost Jitter") then return end
     local h = hrp(); if not h then return end
     ghost_timer = ghost_timer + dt
-    if ghost_timer < 0.08 then return end  -- fires ~12x per second
-    ghost_timer = 0
-    ghost_dir   = ghost_dir * -1
-    local pos   = h.Position
-    local shift = ghost_dir * 0.4  -- tiny shift, barely visible
-    h.Position  = Vector3.new(pos.X + shift, pos.Y, pos.Z + shift)
+    if ghost_timer < 0.08 then return end
+    ghost_timer = 0; ghost_dir = ghost_dir * -1
+    local pos = h.Position
+    h.Position = Vector3.new(pos.X + ghost_dir*0.4, pos.Y, pos.Z + ghost_dir*0.4)
 end
 
--- ── Auto Sprint ───────────────────────────────
--- Holds shift constantly so you always run
--- Releases on death to avoid getting stuck
-local sprint_was_on = false
 local function run_auto_sprint()
     local on = ui.getValue(T, CI, "Auto Sprint")
-    if on then
-        if not sprint_was_on then
-            keyboard.Press("lshift")
-            sprint_was_on = true
-        end
-    else
-        if sprint_was_on then
-            keyboard.Release("lshift")
-            sprint_was_on = false
-        end
+    if on and not sprint_on then
+        keyboard.Press("lshift"); sprint_on = true
+    elseif not on and sprint_on then
+        keyboard.Release("lshift"); sprint_on = false
     end
 end
 
@@ -641,11 +691,8 @@ local function draw_threat_tracker()
             local r  = math.floor(255*(1-hp_pct))
             local g  = math.floor(255*hp_pct)
             local tc = Color3.fromRGB(r, g, 30)
-            -- Line from center to target
             draw.Line(cx, cy, sx, sy, Color3.fromRGB(255,80,0), 1, 90)
-            -- Target ring
             draw.Circle(sx, sy, 10, tc, 1.5, 16, 200)
-            -- Velocity arrow
             local spd = math.sqrt(c.vel.X^2 + c.vel.Z^2)
             if spd > 1 then
                 local pred = Vector3.new(
@@ -663,7 +710,6 @@ local function draw_threat_tracker()
                     draw.Line(px,   py+d, px-d, py,   Color3.fromRGB(255,230,0), 1, 180)
                 end
             end
-            -- Label
             local dist = h and (c.pos - h.Position).Magnitude or 0
             local info = string.format("%s  %.0fm  %d%%", c.name, dist, math.floor(hp_pct*100))
             local tw, th = draw.GetTextSize(info, "ConsolasBold")
@@ -683,6 +729,7 @@ local C_ERR = Color3.fromRGB(255, 60,  60 )
 local C_NFO = Color3.fromRGB(140, 190, 255)
 local C_DIM = Color3.fromRGB(100, 100, 100)
 local C_PRP = Color3.fromRGB(180, 80,  255)
+local C_CYN = Color3.fromRGB(0,   220, 255)
 
 local function hud()
     local sw, sh = cheat.getWindowSize()
@@ -695,42 +742,40 @@ local function hud()
         y = y - lh
     end
 
-    -- Watermark
     ln("PLWare " .. PLW_VERSION, C_DIM)
     y = y - 3
 
+    -- Exploits active
+    local ex_any = false
+    if ui.getValue(T, CX, "Speed Hack")       then ln(string.format("[ SPEED: %d ]", ui.getValue(T, CX, "Walk Speed")), C_CYN); ex_any=true end
+    if ui.getValue(T, CX, "Fly")              then ln("[ FLY ]",          C_CYN); ex_any=true end
+    if ui.getValue(T, CX, "Noclip")           then ln("[ NOCLIP ]",       C_CYN); ex_any=true end
+    if ui.getValue(T, CX, "Infinite Jump")    then ln("[ INF JUMP ]",     C_CYN); ex_any=true end
+    if ui.getValue(T, CX, "Jetpack")          then ln("[ JETPACK ]",      C_CYN); ex_any=true end
+    if ui.getValue(T, CX, "Anti-Aim")         then ln("[ ANTI-AIM ]",     C_CYN); ex_any=true end
+    if ui.getValue(T, CX, "Underground")      then ln("[ UNDERGROUND ]",  C_CYN); ex_any=true end
+    if ui.getValue(T, CX, "Bunnyhop")         then ln("[ BHOP ]",         C_CYN); ex_any=true end
+
     -- Misc
-    if ui.getValue(T, CM, "Panic Button") then
-        ln("[ PANIC READY ]", C_WRN)
-    end
+    if ui.getValue(T, CM, "Panic Button")     then ln("[ PANIC READY ]",  C_WRN) end
 
     -- Inmate
-    if ui.getValue(T, CI, "Auto Sprint") then
-        ln("[ SPRINT: ON ]", C_OK)
-    end
-
-    if ui.getValue(T, CI, "Ghost Jitter") then
-        ln("[ GHOST JITTER ]", C_PRP)
-    end
-
-    if ui.getValue(T, CI, "Guard Detector") then
-        ln("[ GUARD DETECT ]", C_PRP)
-    end
+    if sprint_on                              then ln("[ SPRINT ]",        C_OK) end
+    if ui.getValue(T, CI, "Ghost Jitter")     then ln("[ GHOST ]",         C_PRP) end
+    if ui.getValue(T, CI, "Guard Detector")   then ln("[ GUARD DETECT ]",  C_PRP) end
 
     if ui.getValue(T, CI, "Escape on Low HP") then
         local p = lp()
         if p and p.MaxHealth > 0 then
             local hp  = math.floor(p.Health/p.MaxHealth*100)
             local thr = ui.getValue(T, CI, "HP %")
-            local col = (hp <= thr) and C_ERR or C_OK
-            ln(string.format("[ HP %d%% | ESC <%d%% ]", hp, thr), col)
+            ln(string.format("[ HP %d%% | ESC <%d%% ]", hp, thr),
+               hp <= thr and C_ERR or C_OK)
         end
     end
 
     -- Guard
-    if ui.getValue(T, CG, "Proximity Alert") then
-        ln("[ ALERT ON ]", C_WRN)
-    end
+    if ui.getValue(T, CG, "Proximity Alert")  then ln("[ ALERT ]",         C_WRN) end
 
     if ui.getValue(T, CG, "Threat Tracker") then
         local cnt = #threat_cache
@@ -774,11 +819,10 @@ cheat.register("onUpdate", function()
     local dt = utility.GetDeltaTime()
     sched.tick()
     update_threats()
-    -- Guard
+    sync_exploits()
     run_auto_arrest()
     run_tp_arrest()
     run_proximity_alert()
-    -- Inmate
     run_escape()
     run_guard_detector()
     run_ghost_jitter(dt)
