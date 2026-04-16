@@ -1,15 +1,24 @@
 -- ╔══════════════════════════════════════════════════╗
---   PrisonLifeWare v3  |  loXxiyt
+--   PrisonLifeWare v4  |  loXxiyt
+--   github.com/loXxiyt/PrisonLifeWare
 -- ╚══════════════════════════════════════════════════╝
 
-local VERSION = "v3"
+local VERSION      = "v4"
+local SESSION_TIME = utility.GetTickCount()
 
+-- ── Containers ─────────────────────────────────────
 local T  = "PLWare"
 local CE = "ESP"
 local CT = "TPS"
 local CG = "GUARD"
 local CI = "INMATE"
 local CM = "MISC"
+
+-- ── Serotonin refs ─────────────────────────────────
+local S_EX   = "Exploits"
+local S_MAIN = "Main"
+local S_MISC = "Misc"
+local S_AB   = "Aimbot"
 
 -- ══════════════════════════════════════════════════
 --  UI
@@ -27,7 +36,6 @@ ui.NewContainer(T, CM, "Misc",      { autosize = true })
 -- ══════════════════════════════════════════════════
 
 local sched = { tasks = {}, ivs = {} }
-
 function sched.after(ms, fn)
     table.insert(sched.tasks, { t = utility.GetTickCount() + ms, fn = fn })
 end
@@ -49,33 +57,25 @@ end
 --  CORE HELPERS
 -- ══════════════════════════════════════════════════
 
-local function now() return utility.GetTickCount() end
-
--- Use entity.GetLocalPlayer() — confirmed working in all tests
-local function glp() return entity.GetLocalPlayer() end
+local function now()  return utility.GetTickCount() end
+local function glp()  return entity.GetLocalPlayer() end
 
 local function char()
     local p = glp(); if not p then return nil end
-    local ok, r = pcall(function()
-        return game.Workspace:FindFirstChild(p.Name)
-    end)
+    local ok, r = pcall(function() return game.Workspace:FindFirstChild(p.Name) end)
     return ok and r or nil
 end
 
 local function hrp()
     local c = char(); if not c then return nil end
-    local ok, r = pcall(function()
-        return c:FindFirstChild("HumanoidRootPart")
-    end)
+    local ok, r = pcall(function() return c:FindFirstChild("HumanoidRootPart") end)
     return ok and r or nil
 end
 
 local function wait_ms(ms)
-    local s = now()
-    while now() - s < ms do end
+    local s = now(); while now() - s < ms do end
 end
 
--- Reliable 3-shot teleport
 local function tp(x, y, z)
     local h = hrp(); if not h then return end
     local v = Vector3.new(x, y, z)
@@ -91,12 +91,17 @@ local function part_of(obj)
         or obj:FindFirstChildOfClass("Part")
 end
 
+-- Cuffs check: scan character children by name since
+-- FindFirstChildOfClass("Tool") is unreliable in Serotonin
 local function cuffs()
     local c = char(); if not c then return false end
-    local t = c:FindFirstChildOfClass("Tool")
-    if not t then return false end
-    local n = string.lower(t.Name)
-    return n == "handcuffs" or n == "menottes"
+    local ok, children = pcall(function() return c:GetChildren() end)
+    if not ok then return false end
+    for _, v in ipairs(children) do
+        local n = string.lower(v.Name)
+        if n == "handcuffs" or n == "menottes" then return true end
+    end
+    return false
 end
 
 local function is_crim(p)
@@ -104,18 +109,21 @@ local function is_crim(p)
 end
 
 local WEAPONS = {
-    ["AK-47"]=true,    ["Remington 870"]=true, ["Taser"]=true,
-    ["M9"]=true,       ["FAL"]=true,           ["M700"]=true,
-    ["MP5"]=true,      ["M4A1"]=true,          ["Revolver"]=true,
+    ["AK-47"]=true, ["Remington 870"]=true, ["Taser"]=true,
+    ["M9"]=true,    ["FAL"]=true,           ["M700"]=true,
+    ["MP5"]=true,   ["M4A1"]=true,          ["Revolver"]=true,
     ["C4 Explosive"]=true, ["Crude Knife"]=true,
-    ["Hammer"]=true,   ["EBR"]=true,
+    ["Hammer"]=true, ["EBR"]=true,
 }
 
 local function armed_inmate(p)
-    local c = game.Workspace:FindFirstChild(p.Name)
-    if not c then return false end
-    local t = c:FindFirstChildOfClass("Tool")
-    return t and WEAPONS[t.Name] == true
+    local c = game.Workspace:FindFirstChild(p.Name); if not c then return false end
+    local ok, children = pcall(function() return c:GetChildren() end)
+    if not ok then return false end
+    for _, v in ipairs(children) do
+        if WEAPONS[v.Name] then return true end
+    end
+    return false
 end
 
 local function valid_target(p)
@@ -123,15 +131,16 @@ local function valid_target(p)
 end
 
 local function has_cuffs_on(p)
-    local c = game.Workspace:FindFirstChild(p.Name)
-    if not c then return false end
-    local t = c:FindFirstChildOfClass("Tool")
-    if not t then return false end
-    local n = string.lower(t.Name)
-    return n == "handcuffs" or n == "menottes"
+    local c = game.Workspace:FindFirstChild(p.Name); if not c then return false end
+    local ok, children = pcall(function() return c:GetChildren() end)
+    if not ok then return false end
+    for _, v in ipairs(children) do
+        local n = string.lower(v.Name)
+        if n == "handcuffs" or n == "menottes" then return true end
+    end
+    return false
 end
 
--- Aim at player using Serotonin SilentAim and left click
 local function click_on(p)
     local bp = p:GetBonePosition("HumanoidRootPart")
             or p:GetBonePosition("Torso")
@@ -143,23 +152,28 @@ local function click_on(p)
     return true
 end
 
+local function sset(tab, cont, name, val)
+    pcall(function() ui.setValue(tab, cont, name, val) end)
+end
+
 -- ══════════════════════════════════════════════════
---  ITEM ESP
+--  ITEM ESP UI
 -- ══════════════════════════════════════════════════
 
 ui.NewCheckbox(T, CE, "Key Card ESP")
 ui.NewCheckbox(T, CE, "Weapon ESP")
+ui.NewCheckbox(T, CE, "Player HP Bars")
 ui.NewColorpicker(T, CE, "Card Color",   { r=0,   g=220, b=255, a=255 }, true)
 ui.NewColorpicker(T, CE, "Weapon Color", { r=255, g=140, b=0,   a=255 }, true)
 ui.newSliderInt(T, CE, "ESP Range", 50, 2000, 800)
 
 local CARDS = { ["Key card"]=true, ["Key Card"]=true }
 local GUNS  = {
-    ["AK-47"]=true,    ["Remington 870"]=true, ["Taser"]=true,
-    ["M9"]=true,       ["FAL"]=true,           ["M700"]=true,
-    ["MP5"]=true,      ["M4A1"]=true,          ["Revolver"]=true,
+    ["AK-47"]=true, ["Remington 870"]=true, ["Taser"]=true,
+    ["M9"]=true,    ["FAL"]=true,           ["M700"]=true,
+    ["MP5"]=true,   ["M4A1"]=true,          ["Revolver"]=true,
     ["C4 Explosive"]=true, ["Riot Shield"]=true,
-    ["Crude Knife"]=true,  ["Hammer"]=true,    ["EBR"]=true,
+    ["Crude Knife"]=true,  ["Hammer"]=true, ["EBR"]=true,
 }
 
 local esp_cards = {}
@@ -205,27 +219,57 @@ local function draw_esp()
     local function render(e, label, col)
         local sx, sy, vis = utility.WorldToScreen(e.pos)
         if not vis then return end
-        -- Corner-tick box (no filled bg = cleaner)
-        local hw, k = 14, 5
-        draw.Line(sx-hw, sy-hw, sx-hw+k, sy-hw,   col, 2)
-        draw.Line(sx-hw, sy-hw, sx-hw,   sy-hw+k, col, 2)
-        draw.Line(sx+hw, sy-hw, sx+hw-k, sy-hw,   col, 2)
-        draw.Line(sx+hw, sy-hw, sx+hw,   sy-hw+k, col, 2)
-        draw.Line(sx-hw, sy+hw, sx-hw+k, sy+hw,   col, 2)
-        draw.Line(sx-hw, sy+hw, sx-hw,   sy+hw-k, col, 2)
-        draw.Line(sx+hw, sy+hw, sx+hw-k, sy+hw,   col, 2)
-        draw.Line(sx+hw, sy+hw, sx+hw,   sy+hw-k, col, 2)
-        -- Label above box
+        -- Filled dark background behind label
         local tw, th = draw.GetTextSize(label, "Tahoma")
-        draw.TextOutlined(label, sx-(tw/2), sy-hw-th-2, col, "Tahoma")
-        -- Distance below box
+        draw.RectFilled(sx-(tw/2)-3, sy-30-th, tw+6, th+4,
+                        Color3.fromRGB(8,8,8), 0, 170)
+        draw.TextOutlined(label, sx-(tw/2), sy-29-th, col, "Tahoma")
+        -- Corner-tick box
+        local hw, k = 12, 4
+        local function ct(x1,y1,x2,y2) draw.Line(x1,y1,x2,y2,col,2) end
+        ct(sx-hw,sy-hw, sx-hw+k,sy-hw); ct(sx-hw,sy-hw, sx-hw,sy-hw+k)
+        ct(sx+hw,sy-hw, sx+hw-k,sy-hw); ct(sx+hw,sy-hw, sx+hw,sy-hw+k)
+        ct(sx-hw,sy+hw, sx-hw+k,sy+hw); ct(sx-hw,sy+hw, sx-hw,sy+hw-k)
+        ct(sx+hw,sy+hw, sx+hw-k,sy+hw); ct(sx+hw,sy+hw, sx+hw,sy+hw-k)
+        -- Distance
         local ds = string.format("%.0fm", e.dist)
         local dw, _ = draw.GetTextSize(ds, "Tahoma")
-        draw.TextOutlined(ds, sx-(dw/2), sy+hw+2, Color3.fromRGB(160,160,160), "Tahoma")
+        draw.TextOutlined(ds, sx-(dw/2), sy+hw+2, Color3.fromRGB(150,150,150), "Tahoma")
     end
 
-    if c_on then for _, e in pairs(esp_cards) do render(e, "CARD",  cc3) end end
-    if g_on then for _, e in pairs(esp_guns)  do render(e, e.name, gc3) end end
+    if c_on then for _, e in pairs(esp_cards) do render(e, "KEY CARD", cc3) end end
+    if g_on then for _, e in pairs(esp_guns)  do render(e, e.name,    gc3) end end
+end
+
+-- Player HP Bars — drawn above all visible players
+local function draw_hp_bars()
+    if not ui.getValue(T, CE, "Player HP Bars") then return end
+    local me = glp()
+    for _, p in ipairs(entity.GetPlayers(false)) do
+        if p.IsAlive and (not me or p.Name ~= me.Name) then
+            if p.BoundingBox and p.BoundingBox.onScreen then
+                local bx = p.BoundingBox.x
+                local by = p.BoundingBox.y
+                local bw = p.BoundingBox.w
+                local pct = p.MaxHealth > 0 and (p.Health / p.MaxHealth) or 1
+                local r   = math.floor(255 * (1 - pct))
+                local g   = math.floor(255 * pct)
+                local bar_w = math.floor(bw * pct)
+                -- Background
+                draw.RectFilled(bx, by - 6, bw, 4,
+                                Color3.fromRGB(30,30,30), 0, 200)
+                -- Health fill
+                if bar_w > 0 then
+                    draw.RectFilled(bx, by - 6, bar_w, 4,
+                                    Color3.fromRGB(r, g, 0), 0, 220)
+                end
+                -- HP text
+                local ht = string.format("%d", math.floor(p.Health))
+                local tw, th = draw.GetTextSize(ht, "Tahoma")
+                draw.TextOutlined(ht, bx + bw + 2, by - 6, Color3.fromRGB(r, g, 30), "Tahoma")
+            end
+        end
+    end
 end
 
 -- ══════════════════════════════════════════════════
@@ -250,18 +294,25 @@ local ESC_LOCS  = {
 }
 local ESC_NAMES = { "Criminal Base", "Outside Gate" }
 
-ui.NewDropdown(T, CT, "Location", LOC_NAMES, 1)
+-- Weapon ground TP — finds nearest instance of chosen weapon
+local WEAPON_TP_NAMES = {
+    "Any Gun", "AK-47", "M4A1", "M9", "MP5",
+    "Remington 870", "FAL", "M700", "EBR",
+    "Crude Knife", "Hammer", "Taser", "Key card",
+}
+
+ui.NewDropdown(T, CT, "Location",   LOC_NAMES,       1)
+ui.NewDropdown(T, CT, "Weapon TP",  WEAPON_TP_NAMES, 1)
 
 ui.NewButton(T, CT, "Teleport", function()
     local idx  = ui.getValue(T, CT, "Location")
-    local name = LOC_NAMES[idx + 1]
-    if not name then return end
-    local d = LOCS[name]
-    if d then tp(d[1], d[2], d[3]); print("[PLWare] → " .. name) end
+    local name = LOC_NAMES[idx + 1]; if not name then return end
+    local d    = LOCS[name];         if not d    then return end
+    tp(d[1], d[2], d[3])
+    print("[PLWare] -> " .. name)
 end)
 
 local sv = { x=nil, y=nil, z=nil }
-
 local function save_pos()
     local h = hrp()
     if h then sv.x, sv.y, sv.z = h.Position.X, h.Position.Y, h.Position.Z end
@@ -277,6 +328,49 @@ ui.NewButton(T, CT, "Save Position", function()
     end
 end)
 
+ui.NewButton(T, CT, "Return", function()
+    if sv.x then ret_pos(); print("[PLWare] Returned")
+    else print("[PLWare] No saved position") end
+end)
+
+ui.NewButton(T, CT, "TP to Weapon", function()
+    local h = hrp(); if not h then return end
+    local idx    = ui.getValue(T, CT, "Weapon TP")
+    local target = WEAPON_TP_NAMES[idx + 1] or "Any Gun"
+    local my_pos = h.Position
+
+    -- Collect matching items from workspace
+    local matches = {}
+    local ok, ch = pcall(function() return game.Workspace:GetChildren() end)
+    if not ok then return end
+
+    for _, obj in pairs(ch) do
+        local match = false
+        if target == "Any Gun" then
+            match = GUNS[obj.Name] == true
+        else
+            match = obj.Name == target
+        end
+        if match then
+            local p = part_of(obj)
+            if p then
+                local dist = (p.Position - my_pos).Magnitude
+                table.insert(matches, { pos=p.Position, dist=dist, name=obj.Name })
+            end
+        end
+    end
+
+    if #matches == 0 then
+        print("[PLWare] No " .. target .. " found on ground"); return
+    end
+    -- Sort by distance, TP to closest
+    table.sort(matches, function(a, b) return a.dist < b.dist end)
+    local best = matches[1]
+    save_pos()
+    tp(best.pos.X, best.pos.Y + 1, best.pos.Z)
+    print(string.format("[PLWare] TP -> %s (%.0fm)", best.name, best.dist))
+end)
+
 ui.NewButton(T, CT, "Grab Gun", function()
     local h = hrp(); if not h then return end
     save_pos()
@@ -289,16 +383,9 @@ ui.NewButton(T, CT, "Grab Gun", function()
     print("[PLWare] Gun grab done")
 end)
 
-ui.NewButton(T, CT, "Return", function()
-    if sv.x then ret_pos(); print("[PLWare] Returned")
-    else print("[PLWare] No saved position") end
-end)
-
 ui.NewButton(T, CT, "Grab Key Card", function()
     local h = hrp(); if not h then return end
-    if #esp_cards == 0 then
-        print("[PLWare] Enable Key Card ESP first"); return
-    end
+    if #esp_cards == 0 then print("[PLWare] Enable Key Card ESP first"); return end
     local best, bd = nil, math.huge
     for _, c in ipairs(esp_cards) do
         local d = (c.pos - h.Position).Magnitude
@@ -327,24 +414,36 @@ end)
 -- ══════════════════════════════════════════════════
 
 ui.NewCheckbox(T, CG, "Auto Arrest")
-ui.newSliderFloat(T, CG, "Arrest Range",  5.0,   30.0,   12.0)
+ui.newSliderFloat(T, CG, "Arrest Range",  5.0,  30.0,   12.0)
 ui.NewCheckbox(T, CG, "TP Arrest")
-ui.newSliderFloat(T, CG, "TP Range",      50.0,  5000.0, 300.0)
+ui.newSliderFloat(T, CG, "TP Range",     50.0, 5000.0, 300.0)
+ui.NewCheckbox(T, CG, "Auto Whitelist")
+ui.NewCheckbox(T, CG, "Patrol Mode")
 ui.NewCheckbox(T, CG, "Threat Tracker")
 ui.NewCheckbox(T, CG, "Proximity Alert")
-ui.newSliderFloat(T, CG, "Alert Range",   5.0,   50.0,   15.0)
+ui.newSliderFloat(T, CG, "Alert Range",   5.0,  50.0,   15.0)
 
 -- ══════════════════════════════════════════════════
 --  INMATE UI
 -- ══════════════════════════════════════════════════
 
 ui.NewCheckbox(T, CI, "Escape on Low HP")
-ui.newSliderInt(T, CI,  "HP %",           5,     50,     25)
+ui.newSliderInt(T, CI,  "HP %",           5,    50,     25)
 ui.NewDropdown(T, CI,   "Escape To",      ESC_NAMES, 1)
 ui.NewCheckbox(T, CI, "Guard Detector")
-ui.newSliderFloat(T, CI, "Detect Range",  5.0,   25.0,   10.0)
+ui.newSliderFloat(T, CI, "Detect Range",  5.0,  25.0,   10.0)
 ui.NewCheckbox(T, CI, "Ghost Jitter")
 ui.NewCheckbox(T, CI, "Auto Sprint")
+ui.NewButton(T, CI, "Criminal Loadout", function()
+    -- One-click: TP to criminal base then return
+    -- Useful for resetting after death
+    local h = hrp(); if not h then return end
+    save_pos()
+    print("[PLWare] Criminal Loadout - heading to base...")
+    tp(-974.4, 108.3, 2057.2)
+    wait_ms(1500)
+    print("[PLWare] Loadout done!")
+end)
 
 -- ══════════════════════════════════════════════════
 --  MISC UI
@@ -352,42 +451,91 @@ ui.NewCheckbox(T, CI, "Auto Sprint")
 
 ui.NewButton(T, CM, "Panic TP", function()
     tp(816.5, 100.7, 2227.9)
-    print("[PLWare] PANIC → Armory")
+    print("[PLWare] PANIC -> Armory")
 end)
+
+ui.NewButton(T, CM, "Kill Switch", function()
+    -- Instantly disables all active Serotonin exploits
+    sset(S_EX, S_MAIN, "Speed",           false)
+    sset(S_EX, S_MAIN, "Walkspeed",       false)
+    sset(S_EX, S_MAIN, "Fly",             false)
+    sset(S_EX, S_MAIN, "Infinite Jump",   false)
+    sset(S_EX, S_MAIN, "Bunnyhop",        false)
+    sset(S_EX, S_MAIN, "Orbit Target",    false)
+    sset(S_EX, S_MISC, "Noclip",          false)
+    sset(S_EX, S_MISC, "Jetpack",         false)
+    sset(S_EX, S_MISC, "Enable Anti-Aim", false)
+    sset(S_EX, S_MISC, "Underground",     false)
+    sset(S_EX, S_MISC, "Slow Fall",       false)
+    sset(S_AB, S_AB,   "Enabled",         false)
+    sset(S_AB, S_AB,   "Silent Aim",      false)
+    print("[PLWare] Kill Switch - all exploits off")
+end)
+
+ui.newSliderInt(T, CM, "Walkspeed", 16, 500, 16)
+ui.NewCheckbox(T, CM, "Speed Hack")
+ui.NewCheckbox(T, CM, "Noclip")
+ui.NewCheckbox(T, CM, "Infinite Jump")
+ui.NewCheckbox(T, CM, "Slow Fall")
+ui.NewCheckbox(T, CM, "Anti AFK")
+
+-- ══════════════════════════════════════════════════
+--  MISC EXPLOIT SYNC (Misc tab only)
+-- ══════════════════════════════════════════════════
+
+local misc_prev = {}
+local function sync_misc()
+    local sp_on  = ui.getValue(T, CM, "Speed Hack")
+    local sp_val = ui.getValue(T, CM, "Walkspeed")
+    if sp_on ~= misc_prev.sp_on or sp_val ~= misc_prev.sp_val then
+        misc_prev.sp_on  = sp_on
+        misc_prev.sp_val = sp_val
+        sset(S_EX, S_MAIN, "Speed",     sp_on)
+        sset(S_EX, S_MAIN, "Walkspeed", sp_on and sp_val or false)
+    end
+    local toggles = {
+        { "Noclip",        S_EX, S_MISC, "Noclip"        },
+        { "Infinite Jump", S_EX, S_MAIN, "Infinite Jump" },
+        { "Slow Fall",     S_EX, S_MISC, "Slow Fall"     },
+        { "Anti AFK",      S_EX, S_MAIN, "Anti Afk"      },
+    }
+    for _, tg in ipairs(toggles) do
+        local want = ui.getValue(T, CM, tg[1])
+        if want ~= misc_prev[tg[1]] then
+            misc_prev[tg[1]] = want
+            sset(tg[2], tg[3], tg[4], want)
+        end
+    end
+end
 
 -- ══════════════════════════════════════════════════
 --  GUARD STATE
 -- ══════════════════════════════════════════════════
 
-local CLICK_CD = 250    -- ms between arrest clicks
-local TP_CYCLE = 3000   -- ms before TP arrest force-resets lock
+local CLICK_CD    = 250
+local TP_CYCLE    = 3000
+local last_click  = 0
+local arr_active  = false
+local arr_status  = "READY"
+local arr_count   = 0        -- session arrest counter
+local last_alert  = 0
+local last_wl     = 0        -- last whitelist tick
 
-local last_click = 0
-local arr_active = false
-local arr_status = "READY"
-local last_alert = 0
-
--- TP Arrest uses Serotonin Orbit + Aimbot
--- We whitelist target → enable orbit (Sero circles them)
--- → aimbot locks on → we click to arrest
+-- TP Arrest state — NO ORBIT (causes underground death)
+-- Uses Aimbot only — much safer
 local tp_name   = nil
 local tp_locked = false
 local tp_start  = 0
+local prev_smoothing = 75
 
 local function tp_cleanup()
     if tp_name then
-        -- Toggle whitelist off (call twice = remove)
-        pcall(function()
-            game.PlayerWhitelist(tp_name)
-        end)
-        -- Disable orbit and aimbot
-        pcall(function()
-            ui.setValue("Exploits", "Main", "Orbit Target", false)
-        end)
-        pcall(function()
-            ui.setValue("Aimbot", "Aimbot", "Enabled",    false)
-            ui.setValue("Aimbot", "Aimbot", "Silent Aim", false)
-        end)
+        -- Remove whitelist
+        pcall(function() game.PlayerWhitelist(tp_name) end)
+        -- Restore aimbot to previous state
+        sset(S_AB, S_AB, "Enabled",    false)
+        sset(S_AB, S_AB, "Silent Aim", false)
+        sset(S_AB, S_AB, "Smoothing",  prev_smoothing)
     end
     tp_name   = nil
     tp_locked = false
@@ -433,20 +581,22 @@ local function run_auto_arrest()
         last_click = n
         local h = hrp()
         if h then
-            -- TP right beside target
-            h.Position = Vector3.new(
-                t.Position.X,
-                t.Position.Y,
-                t.Position.Z + 2.5
-            )
+            h.Position = Vector3.new(t.Position.X, t.Position.Y, t.Position.Z + 2.5)
         end
+        local was_valid = valid_target(t)
         click_on(t)
+        -- Check if arrested (target no longer valid next frame)
+        sched.after(400, function()
+            local p2 = get_player_by_name(t.Name)
+            if not p2 or not valid_target(p2) then
+                arr_count = arr_count + 1
+                print(string.format("[PLWare] Arrested! Total: %d", arr_count))
+            end
+        end)
     end
 end
 
--- ── TP Arrest ────────────────────────────────────
--- Locks onto target, uses Serotonin Orbit + Aimbot,
--- force-resets every TP_CYCLE ms to prevent freeze
+-- ── TP Arrest (Aimbot only, no Orbit) ────────────
 local function run_tp_arrest()
     if not ui.getValue(T, CG, "TP Arrest") then
         tp_cleanup(); return
@@ -456,7 +606,7 @@ local function run_tp_arrest()
     local n = now()
     local h = hrp(); if not h then return end
 
-    -- Force cycle reset every 3s — fixes frozen arrest
+    -- Force cycle reset every 3s
     if tp_locked and n - tp_start >= TP_CYCLE then
         tp_cleanup(); return
     end
@@ -465,37 +615,33 @@ local function run_tp_arrest()
     if tp_locked and tp_name then
         local p = get_player_by_name(tp_name)
         if not p or not valid_target(p) then
-            -- Arrested or left
-            print("[PLWare] Done: " .. tp_name)
+            arr_count = arr_count + 1
+            print(string.format("[PLWare] Arrested: %s | Total: %d", tp_name, arr_count))
             tp_cleanup(); return
         end
         target = p
     else
-        -- Find new target
         local best = find_target(ui.getValue(T, CG, "TP Range"))
         if not best then tp_cleanup(); return end
-
         tp_name   = best.Name
         tp_locked = true
         tp_start  = n
         save_pos()
-
-        -- Engage Serotonin on target
+        -- Engage aimbot only (NO orbit — causes underground death)
         pcall(function()
+            prev_smoothing = ui.getValue(S_AB, S_AB, "Smoothing") or 75
             game.PlayerWhitelist(tp_name)
-            ui.setValue("Exploits", "Main", "Orbit Target", true)
-            ui.setValue("Aimbot", "Aimbot", "Smoothing",  0)
-            ui.setValue("Aimbot", "Aimbot", "Silent Aim", true)
-            ui.setValue("Aimbot", "Aimbot", "Enabled",    true)
+            sset(S_AB, S_AB, "Smoothing",  0)
+            sset(S_AB, S_AB, "Silent Aim", true)
+            sset(S_AB, S_AB, "Enabled",    true)
         end)
-
-        print("[PLWare] Orbit: " .. tp_name)
+        print("[PLWare] Locked: " .. tp_name)
         target = best
     end
 
     if not target then return end
 
-    -- TP beside target using direction offset
+    -- TP beside target
     local pos = target.Position
     local dx  = pos.X - h.Position.X
     local dz  = pos.Z - h.Position.Z
@@ -514,6 +660,65 @@ local function run_tp_arrest()
         last_click = n
         click_on(target)
     end
+end
+
+-- ── Auto Whitelist ────────────────────────────────
+-- Silently keeps nearest criminal whitelisted for
+-- Serotonin's aimbot even outside of TP Arrest
+local current_wl = nil
+local function run_auto_whitelist()
+    if not ui.getValue(T, CG, "Auto Whitelist") then
+        if current_wl then
+            pcall(function() game.PlayerWhitelist(current_wl) end)
+            current_wl = nil
+        end
+        return
+    end
+    local n = now(); if n - last_wl < 1000 then return end
+    last_wl = n
+    local t = find_target(5000) -- full map range
+    if t then
+        if current_wl ~= t.Name then
+            if current_wl then
+                pcall(function() game.PlayerWhitelist(current_wl) end)
+            end
+            current_wl = t.Name
+            pcall(function() game.PlayerWhitelist(current_wl) end)
+        end
+    elseif current_wl then
+        pcall(function() game.PlayerWhitelist(current_wl) end)
+        current_wl = nil
+    end
+end
+
+-- ── Patrol Mode ───────────────────────────────────
+-- Cycles through patrol points every 8s
+-- Auto TPs to find criminals when none in range
+local PATROL_POINTS = {
+    { 807.9, 98.0,  2484.0 }, -- Prison Yard
+    { 918.8, 100.0, 2484.5 }, -- Cells
+    { 919.1, 100.0, 2227.9 }, -- Cafeteria
+    { 816.5, 100.7, 2227.9 }, -- Armory
+}
+local patrol_idx  = 1
+local last_patrol = 0
+local patrol_status = "IDLE"
+
+local function run_patrol()
+    if not ui.getValue(T, CG, "Patrol Mode") then
+        patrol_status = "IDLE"; return
+    end
+    -- Don't patrol if TP Arrest is actively chasing
+    if tp_locked then return end
+    local n = now()
+    if n - last_patrol < 8000 then return end
+    last_patrol = n
+    local pt = PATROL_POINTS[patrol_idx]
+    patrol_idx = (patrol_idx % #PATROL_POINTS) + 1
+    tp(pt[1], pt[2], pt[3])
+    local names = { "Prison Yard", "Cells", "Cafeteria", "Armory" }
+    patrol_status = names[patrol_idx] or "?"
+    print("[PLWare] Patrol -> " .. patrol_status)
 end
 
 -- ── Proximity Alert ──────────────────────────────
@@ -546,22 +751,18 @@ local sprinting   = false
 local function do_escape(label)
     local idx  = ui.getValue(T, CI, "Escape To")
     local name = ESC_NAMES[idx + 1] or "Criminal Base"
-    local d    = ESC_LOCS[name]
-    if not d then return end
-    local h = hrp()
-    if h then
-        for i = 1, 5 do
-            h.Position = Vector3.new(d[1], d[2], d[3])
-            wait_ms(55)
-        end
-        print("[PLWare] " .. label .. " → " .. name)
+    local d    = ESC_LOCS[name]; if not d then return end
+    local h    = hrp(); if not h then return end
+    for i = 1, 5 do
+        h.Position = Vector3.new(d[1], d[2], d[3])
+        wait_ms(55)
     end
+    print("[PLWare] " .. label .. " -> " .. name)
 end
 
 local function run_escape()
     if not ui.getValue(T, CI, "Escape on Low HP") then return end
-    local n = now()
-    if n - last_esc < 500 then return end
+    local n = now(); if n - last_esc < 500 then return end
     last_esc = n
     local p = glp()
     if not p or p.MaxHealth <= 0 then return end
@@ -569,14 +770,13 @@ local function run_escape()
     if (p.Health / p.MaxHealth * 100) <= thresh then
         last_esc = n + 3000
         just_esc = true; esc_time = n
-        do_escape("LOW HP ESCAPE")
+        do_escape("LOW HP")
     end
 end
 
 local function run_guard_detector()
     if not ui.getValue(T, CI, "Guard Detector") then return end
     local n = now()
-    -- Don't fire right after a low HP escape
     if just_esc and n - esc_time < 5000 then return end
     just_esc = false
     if n - last_detect < 1500 then return end
@@ -600,10 +800,9 @@ local function run_ghost_jitter(dt)
     local h = hrp(); if not h then return end
     ghost_timer = ghost_timer + dt
     if ghost_timer < 0.08 then return end
-    ghost_timer = 0
-    ghost_dir   = ghost_dir * -1
-    local pos   = h.Position
-    h.Position  = Vector3.new(pos.X + ghost_dir*0.4, pos.Y, pos.Z + ghost_dir*0.4)
+    ghost_timer = 0; ghost_dir = ghost_dir * -1
+    local pos = h.Position
+    h.Position = Vector3.new(pos.X + ghost_dir*0.4, pos.Y, pos.Z + ghost_dir*0.4)
 end
 
 local function run_auto_sprint()
@@ -623,10 +822,8 @@ local threats     = {}
 local threat_tick = 0
 
 local function update_threats()
-    local n = now()
-    if n - threat_tick < 300 then return end
-    threat_tick = n
-    threats = {}
+    local n = now(); if n - threat_tick < 300 then return end
+    threat_tick = n; threats = {}
     for _, p in ipairs(entity.GetPlayers(true)) do
         if valid_target(p) then
             table.insert(threats, {
@@ -648,18 +845,11 @@ local function draw_threat_tracker()
     local h      = hrp()
     for _, c in ipairs(threats) do
         local sx, sy, vis = utility.WorldToScreen(c.pos)
-        if not vis then goto continue end
+        if not vis then goto skip end
         local pct = c.maxhp > 0 and (c.hp/c.maxhp) or 1
-        local col = Color3.fromRGB(
-            math.floor(255*(1-pct)),
-            math.floor(255*pct),
-            30
-        )
-        -- Orange line from crosshair to target
-        draw.Line(cx, cy, sx, sy, Color3.fromRGB(255,80,0), 1, 85)
-        -- Health-colored ring at target
+        local col = Color3.fromRGB(math.floor(255*(1-pct)), math.floor(255*pct), 30)
+        draw.Line(cx, cy, sx, sy, Color3.fromRGB(255,80,0), 1, 80)
         draw.Circle(sx, sy, 10, col, 1.5, 16, 210)
-        -- Velocity prediction arrow
         local spd = math.sqrt(c.vel.X^2 + c.vel.Z^2)
         if spd > 1 then
             local pred = Vector3.new(
@@ -671,118 +861,172 @@ local function draw_threat_tracker()
             if pv then
                 draw.Line(sx, sy, px, py, Color3.fromRGB(255,220,0), 1, 100)
                 local d = 5
-                draw.Line(px-d, py,   px,   py-d, Color3.fromRGB(255,220,0), 1, 180)
+                draw.Line(px-d,py,   px,   py-d, Color3.fromRGB(255,220,0), 1, 180)
                 draw.Line(px,   py-d, px+d, py,   Color3.fromRGB(255,220,0), 1, 180)
                 draw.Line(px+d, py,   px,   py+d, Color3.fromRGB(255,220,0), 1, 180)
                 draw.Line(px,   py+d, px-d, py,   Color3.fromRGB(255,220,0), 1, 180)
             end
         end
-        -- Name + dist + HP label
         local dist = h and (c.pos - h.Position).Magnitude or 0
         local info = string.format("%s  %.0fm  %d%%", c.name, dist, math.floor(pct*100))
         local tw, th = draw.GetTextSize(info, "Tahoma")
         draw.TextOutlined(info, sx-(tw/2), sy-14-th, col, "Tahoma")
-        ::continue::
+        ::skip::
     end
 end
 
 -- ══════════════════════════════════════════════════
---  HUD — bottom-left panel, Tahoma font
---  Semi-transparent dark background for readability
+--  HUD — premium panel with Tahoma
+--  Dark bg + gradient accent + section separators
 -- ══════════════════════════════════════════════════
 
-local F   = "Tahoma"
-local COK  = Color3.fromRGB(80,  255, 120)
+local F    = "Tahoma"
+local COK  = Color3.fromRGB(100, 255, 140)
 local CWRN = Color3.fromRGB(255, 200, 0  )
-local CERR = Color3.fromRGB(255, 60,  60 )
-local CNFO = Color3.fromRGB(140, 190, 255)
-local CDIM = Color3.fromRGB(90,  90,  90 )
-local CPRP = Color3.fromRGB(180, 80,  255)
+local CERR = Color3.fromRGB(255, 70,  70 )
+local CNFO = Color3.fromRGB(120, 180, 255)
+local CDIM = Color3.fromRGB(80,  80,  80 )
+local CPRP = Color3.fromRGB(190, 90,  255)
+local CCYN = Color3.fromRGB(0,   210, 255)
+local CGRY = Color3.fromRGB(60,  60,  60 )
 
 local function hud()
     local sw, sh = cheat.getWindowSize()
-    local x  = 10
-    local lh = 15
+    local x   = 12
+    local lh  = 15
+    local pad = 7
 
-    -- Collect lines first so we can draw background
-    local lines = {}
+    -- Build line list
+    local lines  = {}
+    local seps   = {}  -- separator positions (line indices)
+
     local function ln(text, col)
         table.insert(lines, { text=text, col=col })
     end
+    local function sep()
+        table.insert(seps, #lines)
+    end
 
-    -- Guard
-    if ui.getValue(T, CG, "Auto Arrest") then
-        if not cuffs() then
-            ln("AUTO ARR  NO CUFFS", CWRN)
-        elseif arr_active then
-            ln("ARREST   " .. arr_status, CERR)
-        else
-            ln("AUTO ARR  READY", COK)
+    -- Guard section
+    local guard_any = ui.getValue(T, CG, "Auto Arrest")
+                   or ui.getValue(T, CG, "TP Arrest")
+                   or ui.getValue(T, CG, "Patrol Mode")
+                   or ui.getValue(T, CG, "Proximity Alert")
+                   or ui.getValue(T, CG, "Threat Tracker")
+
+    if guard_any then
+        if ui.getValue(T, CG, "Auto Arrest") then
+            if not cuffs() then    ln("AUTO ARR   NO CUFFS",       CWRN)
+            elseif arr_active then ln("ARREST     " .. arr_status,  CERR)
+            else                   ln("AUTO ARR   READY",           COK) end
         end
-    end
-
-    if ui.getValue(T, CG, "TP Arrest") then
-        if not cuffs() then
-            ln("TP ARR   NO CUFFS", CWRN)
-        elseif tp_name then
-            ln("ORBIT    " .. tp_name, CERR)
-        else
-            ln("TP ARR   SCANNING", CNFO)
+        if ui.getValue(T, CG, "TP Arrest") then
+            if not cuffs() then   ln("TP ARR     NO CUFFS",        CWRN)
+            elseif tp_name then   ln("AIMLOCK    " .. tp_name,      CERR)
+            else                  ln("TP ARR     SCANNING",         CNFO) end
         end
-    end
-
-    if ui.getValue(T, CG, "Threat Tracker") then
-        local cnt = #threats
-        ln(string.format("THREATS  %d", cnt), cnt > 0 and CERR or COK)
-    end
-
-    if ui.getValue(T, CG, "Proximity Alert") then
-        ln("ALERT    ON", CWRN)
-    end
-
-    -- Inmate
-    if ui.getValue(T, CI, "Escape on Low HP") then
-        local p = glp()
-        if p and p.MaxHealth > 0 then
-            local hp  = math.floor(p.Health / p.MaxHealth * 100)
-            local thr = ui.getValue(T, CI, "HP %")
-            ln(string.format("HP       %d%%  ESC %d%%", hp, thr),
-               hp <= thr and CERR or COK)
+        if ui.getValue(T, CG, "Patrol Mode") then
+            ln("PATROL     " .. patrol_status, CCYN)
         end
+        if ui.getValue(T, CG, "Threat Tracker") then
+            local cnt = #threats
+            ln(string.format("THREATS    %d", cnt), cnt > 0 and CERR or COK)
+        end
+        if ui.getValue(T, CG, "Proximity Alert") then
+            ln("ALERT      ON", CWRN)
+        end
+        if ui.getValue(T, CG, "Auto Whitelist") then
+            ln("WHITELIST  " .. (current_wl or "NONE"), CCYN)
+        end
+        if arr_count > 0 then
+            ln(string.format("ARRESTS    %d", arr_count), COK)
+        end
+        sep()
     end
 
-    if ui.getValue(T, CI, "Guard Detector") then ln("DETECT   ON", CPRP) end
-    if ui.getValue(T, CI, "Ghost Jitter")   then ln("GHOST    ON", CPRP) end
-    if sprinting                            then ln("SPRINT   ON", COK)  end
+    -- Inmate section
+    local inmate_any = ui.getValue(T, CI, "Escape on Low HP")
+                    or ui.getValue(T, CI, "Guard Detector")
+                    or ui.getValue(T, CI, "Ghost Jitter")
+                    or sprinting
 
-    -- Watermark always last (bottom)
-    ln("PLWare " .. VERSION, CDIM)
+    if inmate_any then
+        if ui.getValue(T, CI, "Escape on Low HP") then
+            local p = glp()
+            if p and p.MaxHealth > 0 then
+                local hp  = math.floor(p.Health / p.MaxHealth * 100)
+                local thr = ui.getValue(T, CI, "HP %")
+                ln(string.format("HP         %d%% / %d%%", hp, thr),
+                   hp <= thr and CERR or COK)
+            end
+        end
+        if ui.getValue(T, CI, "Guard Detector") then ln("DETECT     ON", CPRP) end
+        if ui.getValue(T, CI, "Ghost Jitter")   then ln("GHOST      ON", CPRP) end
+        if sprinting                            then ln("SPRINT     ON", COK) end
+        sep()
+    end
+
+    -- Misc exploits active
+    local misc_any = ui.getValue(T, CM, "Speed Hack")
+                  or ui.getValue(T, CM, "Noclip")
+                  or ui.getValue(T, CM, "Infinite Jump")
+                  or ui.getValue(T, CM, "Slow Fall")
+
+    if misc_any then
+        if ui.getValue(T, CM, "Speed Hack") then
+            ln(string.format("SPEED      %d", ui.getValue(T, CM, "Walkspeed")), CCYN)
+        end
+        if ui.getValue(T, CM, "Noclip")        then ln("NOCLIP     ON", CCYN) end
+        if ui.getValue(T, CM, "Infinite Jump")  then ln("INF JUMP   ON", CCYN) end
+        if ui.getValue(T, CM, "Slow Fall")      then ln("SLOW FALL  ON", CCYN) end
+        sep()
+    end
+
+    -- Session time
+    local elapsed = math.floor((now() - SESSION_TIME) / 1000)
+    local mins    = math.floor(elapsed / 60)
+    local secs    = elapsed % 60
+    ln(string.format("PLWare %s  %02d:%02d", VERSION, mins, secs), CDIM)
 
     if #lines == 0 then return end
 
-    -- Measure panel width
+    -- Measure panel
     local max_w = 0
     for _, l in ipairs(lines) do
         local w, _ = draw.GetTextSize(l.text, F)
         if w > max_w then max_w = w end
     end
 
-    local pad_x = 8
-    local pad_y = 6
-    local panel_w = max_w + pad_x*2
-    local panel_h = #lines * lh + pad_y*2
-    local panel_x = x - pad_x
-    local panel_y = sh - 18 - (#lines - 1) * lh - pad_y
+    local panel_w = max_w + pad*2
+    local panel_h = #lines * lh + pad*2
+    local panel_x = x - pad
+    local panel_y = sh - 18 - (#lines-1)*lh - pad
 
-    -- Dark semi-transparent background
+    -- Dark background
     draw.RectFilled(panel_x, panel_y, panel_w, panel_h,
-                    Color3.fromRGB(10, 10, 10), 0, 160)
+                    Color3.fromRGB(8, 10, 12), 2, 175)
 
-    -- Thin top accent line
-    draw.Line(panel_x, panel_y, panel_x + panel_w, panel_y,
-              Color3.fromRGB(0, 180, 255), 1, 180)
+    -- Top gradient accent bar
+    draw.Gradient(panel_x, panel_y, panel_w, 2,
+                  Color3.fromRGB(0, 160, 255),
+                  Color3.fromRGB(160, 0, 255),
+                  true, 230, 230)
 
-    -- Draw text bottom-up
+    -- Separator lines inside panel
+    local sep_y = sh - 18 + lh
+    local line_i = 0
+    local sep_set = {}
+    for _, si in ipairs(seps) do sep_set[si] = true end
+
+    for i, l in ipairs(lines) do
+        if sep_set[i] then
+            local sy2 = panel_y + (i * lh) + pad - math.floor(lh/2)
+            draw.Line(panel_x + 4, sy2, panel_x + panel_w - 4, sy2,
+                      CGRY, 1, 120)
+        end
+    end
+
+    -- Draw text upward
     local y = sh - 18
     for i = #lines, 1, -1 do
         local l = lines[i]
@@ -799,6 +1043,7 @@ sched.every(800, refresh_esp)
 
 cheat.register("onPaint", function()
     draw_esp()
+    draw_hp_bars()
     draw_threat_tracker()
     hud()
 end)
@@ -807,8 +1052,11 @@ cheat.register("onUpdate", function()
     local dt = utility.GetDeltaTime()
     sched.tick()
     update_threats()
+    sync_misc()
     run_auto_arrest()
     run_tp_arrest()
+    run_auto_whitelist()
+    run_patrol()
     run_proximity_alert()
     run_escape()
     run_guard_detector()
