@@ -3,7 +3,7 @@
 --   github.com/loXxiyt/PrisonLifeWare
 -- ╚══════════════════════════════════════════════════╝
 
-local VERSION      = "v4"
+local VERSION      = "v4.1"
 local SESSION_TIME = utility.GetTickCount()
 
 -- ── Containers ─────────────────────────────────────
@@ -161,9 +161,8 @@ end
 -- ══════════════════════════════════════════════════
 
 ui.NewCheckbox(T, CE, "Key Card ESP")
-ui.NewCheckbox(T, CE, "Weapon ESP")
-ui.NewCheckbox(T, CE, "Player HP Bars")
 ui.NewColorpicker(T, CE, "Card Color",   { r=0,   g=220, b=255, a=255 }, true)
+ui.NewCheckbox(T, CE, "Weapon ESP")
 ui.NewColorpicker(T, CE, "Weapon Color", { r=255, g=140, b=0,   a=255 }, true)
 ui.newSliderInt(T, CE, "ESP Range", 50, 2000, 800)
 
@@ -241,36 +240,7 @@ local function draw_esp()
     if g_on then for _, e in pairs(esp_guns)  do render(e, e.name,    gc3) end end
 end
 
--- Player HP Bars — drawn above all visible players
-local function draw_hp_bars()
-    if not ui.getValue(T, CE, "Player HP Bars") then return end
-    local me = glp()
-    for _, p in ipairs(entity.GetPlayers(false)) do
-        if p.IsAlive and (not me or p.Name ~= me.Name) then
-            if p.BoundingBox and p.BoundingBox.onScreen then
-                local bx = p.BoundingBox.x
-                local by = p.BoundingBox.y
-                local bw = p.BoundingBox.w
-                local pct = p.MaxHealth > 0 and (p.Health / p.MaxHealth) or 1
-                local r   = math.floor(255 * (1 - pct))
-                local g   = math.floor(255 * pct)
-                local bar_w = math.floor(bw * pct)
-                -- Background
-                draw.RectFilled(bx, by - 6, bw, 4,
-                                Color3.fromRGB(30,30,30), 0, 200)
-                -- Health fill
-                if bar_w > 0 then
-                    draw.RectFilled(bx, by - 6, bar_w, 4,
-                                    Color3.fromRGB(r, g, 0), 0, 220)
-                end
-                -- HP text
-                local ht = string.format("%d", math.floor(p.Health))
-                local tw, th = draw.GetTextSize(ht, "Tahoma")
-                draw.TextOutlined(ht, bx + bw + 2, by - 6, Color3.fromRGB(r, g, 30), "Tahoma")
-            end
-        end
-    end
-end
+
 
 -- ══════════════════════════════════════════════════
 --  TELEPORTS
@@ -435,14 +405,14 @@ ui.newSliderFloat(T, CI, "Detect Range",  5.0,  25.0,   10.0)
 ui.NewCheckbox(T, CI, "Ghost Jitter")
 ui.NewCheckbox(T, CI, "Auto Sprint")
 ui.NewButton(T, CI, "Criminal Loadout", function()
-    -- One-click: TP to criminal base then return
-    -- Useful for resetting after death
+    -- TP to criminal base, wait for items to spawn, then return
     local h = hrp(); if not h then return end
     save_pos()
-    print("[PLWare] Criminal Loadout - heading to base...")
+    print("[PLWare] Heading to criminal base...")
     tp(-974.4, 108.3, 2057.2)
-    wait_ms(1500)
-    print("[PLWare] Loadout done!")
+    wait_ms(2000)  -- stay 2s to grab knife/items
+    ret_pos()
+    print("[PLWare] Loadout done - returned!")
 end)
 
 -- ══════════════════════════════════════════════════
@@ -518,6 +488,7 @@ local last_click  = 0
 local arr_active  = false
 local arr_status  = "READY"
 local arr_count   = 0        -- session arrest counter
+local arrested_set = {}      -- names already counted this session (name -> tick)
 local last_alert  = 0
 local last_wl     = 0        -- last whitelist tick
 
@@ -583,14 +554,18 @@ local function run_auto_arrest()
         if h then
             h.Position = Vector3.new(t.Position.X, t.Position.Y, t.Position.Z + 2.5)
         end
-        local was_valid = valid_target(t)
         click_on(t)
-        -- Check if arrested (target no longer valid next frame)
+        -- Check if arrested — only count each name ONCE even if
+        -- multiple 400ms checks fire after target becomes invalid
+        local target_name = t.Name
         sched.after(400, function()
-            local p2 = get_player_by_name(t.Name)
+            if arrested_set[target_name] then return end
+            local p2 = get_player_by_name(target_name)
             if not p2 or not valid_target(p2) then
+                arrested_set[target_name] = now()
                 arr_count = arr_count + 1
-                print(string.format("[PLWare] Arrested! Total: %d", arr_count))
+                print(string.format("[PLWare] Arrested %s | Total: %d",
+                    target_name, arr_count))
             end
         end)
     end
@@ -606,21 +581,29 @@ local function run_tp_arrest()
     local n = now()
     local h = hrp(); if not h then return end
 
-    -- Force cycle reset every 3s
-    if tp_locked and n - tp_start >= TP_CYCLE then
-        tp_cleanup(); return
-    end
-
+    -- Check target validity FIRST (before timeout) so we don't miss
+    -- an arrest that happens right as the cycle expires
     local target = nil
     if tp_locked and tp_name then
         local p = get_player_by_name(tp_name)
         if not p or not valid_target(p) then
-            arr_count = arr_count + 1
-            print(string.format("[PLWare] Arrested: %s | Total: %d", tp_name, arr_count))
+            -- Target arrested / no longer a criminal
+            if not arrested_set[tp_name] then
+                arrested_set[tp_name] = n
+                arr_count = arr_count + 1
+                print(string.format("[PLWare] Arrested %s | Total: %d",
+                    tp_name, arr_count))
+            end
             tp_cleanup(); return
         end
         target = p
+
+        -- Now check timeout
+        if n - tp_start >= TP_CYCLE then
+            tp_cleanup(); return
+        end
     else
+        -- Acquire new target
         local best = find_target(ui.getValue(T, CG, "TP Range"))
         if not best then tp_cleanup(); return end
         tp_name   = best.Name
@@ -641,8 +624,17 @@ local function run_tp_arrest()
 
     if not target then return end
 
-    -- TP beside target
+    -- Sanity check: only TP if target is within valid map bounds
+    -- Prevents teleporting underground when entity positions are stale
     local pos = target.Position
+    if pos.Y < 85 or pos.Y > 160
+    or pos.X < -1100 or pos.X > 1100
+    or pos.Z < 1900  or pos.Z > 2700 then
+        -- Position looks wrong/stale — skip this frame
+        return
+    end
+
+    -- TP beside target using direction offset
     local dx  = pos.X - h.Position.X
     local dz  = pos.Z - h.Position.Z
     local mag = math.sqrt(dx*dx + dz*dz)
@@ -668,6 +660,15 @@ end
 local current_wl = nil
 local function run_auto_whitelist()
     if not ui.getValue(T, CG, "Auto Whitelist") then
+        if current_wl then
+            pcall(function() game.PlayerWhitelist(current_wl) end)
+            current_wl = nil
+        end
+        return
+    end
+    -- Skip if TP Arrest is actively managing the whitelist
+    -- Otherwise they toggle each other and aimbot breaks
+    if tp_locked then
         if current_wl then
             pcall(function() game.PlayerWhitelist(current_wl) end)
             current_wl = nil
@@ -768,7 +769,7 @@ local function run_escape()
     if not p or p.MaxHealth <= 0 then return end
     local thresh = ui.getValue(T, CI, "HP %")
     if (p.Health / p.MaxHealth * 100) <= thresh then
-        last_esc = n + 3000
+        last_esc = n + 10000  -- 10s cooldown prevents spam
         just_esc = true; esc_time = n
         do_escape("LOW HP")
     end
@@ -888,7 +889,6 @@ local CNFO = Color3.fromRGB(120, 180, 255)
 local CDIM = Color3.fromRGB(80,  80,  80 )
 local CPRP = Color3.fromRGB(190, 90,  255)
 local CCYN = Color3.fromRGB(0,   210, 255)
-local CGRY = Color3.fromRGB(60,  60,  60 )
 
 local function hud()
     local sw, sh = cheat.getWindowSize()
@@ -897,14 +897,10 @@ local function hud()
     local pad = 7
 
     -- Build line list
-    local lines  = {}
-    local seps   = {}  -- separator positions (line indices)
+    local lines = {}
 
     local function ln(text, col)
         table.insert(lines, { text=text, col=col })
-    end
-    local function sep()
-        table.insert(seps, #lines)
     end
 
     -- Guard section
@@ -941,7 +937,6 @@ local function hud()
         if arr_count > 0 then
             ln(string.format("ARRESTS    %d", arr_count), COK)
         end
-        sep()
     end
 
     -- Inmate section
@@ -963,7 +958,6 @@ local function hud()
         if ui.getValue(T, CI, "Guard Detector") then ln("DETECT     ON", CPRP) end
         if ui.getValue(T, CI, "Ghost Jitter")   then ln("GHOST      ON", CPRP) end
         if sprinting                            then ln("SPRINT     ON", COK) end
-        sep()
     end
 
     -- Misc exploits active
@@ -979,7 +973,6 @@ local function hud()
         if ui.getValue(T, CM, "Noclip")        then ln("NOCLIP     ON", CCYN) end
         if ui.getValue(T, CM, "Infinite Jump")  then ln("INF JUMP   ON", CCYN) end
         if ui.getValue(T, CM, "Slow Fall")      then ln("SLOW FALL  ON", CCYN) end
-        sep()
     end
 
     -- Session time
@@ -1012,20 +1005,6 @@ local function hud()
                   Color3.fromRGB(160, 0, 255),
                   true, 230, 230)
 
-    -- Separator lines inside panel
-    local sep_y = sh - 18 + lh
-    local line_i = 0
-    local sep_set = {}
-    for _, si in ipairs(seps) do sep_set[si] = true end
-
-    for i, l in ipairs(lines) do
-        if sep_set[i] then
-            local sy2 = panel_y + (i * lh) + pad - math.floor(lh/2)
-            draw.Line(panel_x + 4, sy2, panel_x + panel_w - 4, sy2,
-                      CGRY, 1, 120)
-        end
-    end
-
     -- Draw text upward
     local y = sh - 18
     for i = #lines, 1, -1 do
@@ -1043,7 +1022,6 @@ sched.every(800, refresh_esp)
 
 cheat.register("onPaint", function()
     draw_esp()
-    draw_hp_bars()
     draw_threat_tracker()
     hud()
 end)
@@ -1066,6 +1044,11 @@ end)
 
 cheat.register("shutdown", function()
     tp_cleanup()
+    -- Also clean up auto whitelist state
+    if current_wl then
+        pcall(function() game.PlayerWhitelist(current_wl) end)
+        current_wl = nil
+    end
     if sprinting then keyboard.Release("lshift") end
     print("[PLWare] Unloaded")
 end)
